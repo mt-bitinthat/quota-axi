@@ -245,6 +245,36 @@ export function openRouterProvider(): ProviderQuota {
   };
 }
 
+/**
+ * Box-dashboard fork: this box's session cost. It reports no window and no
+ * bound - a session cost is money already spent, not headroom - so its two
+ * figure lines take the headline slot outright.
+ */
+export function awsProvider(): ProviderQuota {
+  return {
+    provider: "aws",
+    label: "AWS",
+    source: "imds",
+    plan: "t3.medium",
+    windows: [],
+    aws: {
+      instanceType: "t3.medium",
+      region: "ap-southeast-2",
+      ratePerHourUsd: 0.0528,
+      uptimeHours: 5.2,
+      sessionUsd: 0.2746,
+      sessionAud: 0.38,
+      ratePerHourAud: 0.074,
+    },
+    state: {
+      status: "fresh",
+      stale: false,
+      refreshedAt: GENERATED_AT,
+      sourcesTried: ["imds"],
+    },
+  };
+}
+
 export function signedOutProvider(
   provider: "cursor" | "copilot" | "kimi",
   error: string,
