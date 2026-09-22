@@ -369,8 +369,8 @@ CODEX_HOME=/path/to/codex-profile quota-axi --provider codex --profile-only --fu
 
 ## Box dashboard fork
 
-This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows, three figure lines to the OpenRouter card, and an `aws` card carrying what this box has cost since it booted.
-They are money shown beside the reading.
+This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows, three figure lines to the OpenRouter card, an `aws` card carrying what this box has cost since it booted, and a `jev` card counting what it has asked TypeSafe's Jev for.
+They are local facts - money, and the calls behind it - shown beside the reading.
 None of them is a quota window, none is ever sent to a provider, and none is written into the quota cache.
 
 ```
@@ -390,7 +390,8 @@ A sample is committed at [docs/box.example.json](docs/box.example.json).
   "subscriptions": {
     "claude": { "renewsDay": 5, "amountAud": 305 },
     "codex": { "renewsDay": 5, "amountAud": 35 }
-  }
+  },
+  "jev": { "usdPerMTok": 3.5 }
 }
 ```
 
@@ -498,6 +499,58 @@ Setting `QUOTA_AXI_AWS_IMDS` to `off` skips the probe and its cache write entire
 Money figures are converted with `fx.audPerUsd` and labeled `AUD`, exactly as the other figure lines are, and stay in USD with a `USD` label when no rate is configured.
 The rate line sheds its region before its own digits when the figures outgrow the card, because the title line already names the instance type the rate belongs to.
 
+### Jev ledger usage
+
+The `jev` card reports what this box has asked TypeSafe's Jev for: the calls made today and over the current cycle, the tokens they moved, and what an operator-configured rate prices those tokens at.
+
+```
+╭─ ● jev ────────────────────────────── ledger ─╮
+│                                               │
+│   today    12 calls · 2.5M tok · $1.23 AUD    │
+│   cycle    40 calls · 9.8M tok · $4.80 AUD    │
+│                                               │
+╰───────────────────────────────────────────────╯
+```
+
+TypeSafe publishes no usage, credit or billing endpoint - `/v1/usage`, `/account`, `/credits`, `/me` and `/billing` all answer 404, and no rate or credit headers come back on a real call - so there is no vendor figure to read and no request is made to find one.
+What there is instead is a ledger every Jev-calling tool on this box appends one line to per API request, at `$XDG_CACHE_HOME/jev/ledger.jsonl` (default `~/.cache/jev/ledger.jsonl`).
+Reading it is the card's only input, so like the `aws` card it is local, credential-free arithmetic that costs nothing on every render.
+
+One JSON object per line, newest appended last:
+
+```json
+{
+  "ts": "2026-09-22T07:08:40+0000",
+  "tool": "jev-find",
+  "model": "jev-1.13.0",
+  "input_tokens": 19588,
+  "output_tokens": 3694,
+  "questions": 200
+}
+```
+
+`ts`, `input_tokens` and `output_tokens` are the fields the card reads; the rest are carried for other readers and ignored here.
+A line that is not an object with a readable timestamp and two non-negative token counts is skipped in silence - the ledger is appended to by several tools at once, so a torn final line is an ordinary thing to find there, and one unreadable line never costs the card the lines that did parse.
+A missing ledger, an empty one, and one with no usable line at all read `no ledger` rather than a measured zero.
+
+**Windows.** `today` is the local calendar day. `cycle` opens at the most recent occurrence of the `jev` entry's `renewsDay` in `box.json`, clamped in short months exactly as the renewal line clamps it, and falls back to the first of the current calendar month when there is no such entry - so an unbilled count still restarts on a date the operator can name rather than trailing a rolling window.
+Both are counted in local time, on each entry's own timestamp rather than on its position in the file.
+
+**Pricing.** TypeSafe publishes no rate card, so money is opt-in and comes from one operator-supplied number:
+
+```json
+{ "jev": { "usdPerMTok": 3.5 } }
+```
+
+It is USD per million tokens, applied to input and output alike, and it must be a positive number or it is dropped like any other malformed `box.json` entry.
+The USD figure is then converted with `fx.audPerUsd` and labeled `AUD`, exactly as the other figure lines are, and stays in USD with a `USD` label when no FX rate is configured.
+Without `jev.usdPerMTok` the card shows calls and tokens and no money at all, which is a truer answer than pricing the traffic at a rate nobody published.
+
+Token counts read in thousands with no decimals below a million and in millions to one decimal from there; a nonzero count that would round away reads `<1k` rather than `0k`.
+Each line sheds its `tok` unit before its own digits when the figures outgrow the card.
+
+It is usage already spent, not headroom: there is no published allowance behind these tokens to run out of, so the card draws no bar and publishes no effective percentage.
+
 ### Machine surfaces
 
 `--json` adds two optional fields to the Claude and Codex providers, with no renames and no re-nesting:
@@ -576,6 +629,47 @@ The AWS provider gains an `aws` field in both `--json` tiers, on the same terms:
 
 `sessionAud` and `ratePerHourAud` are present only when a rate is configured, and the hourly rate keeps four decimals because a small instance costs less than a cent an hour.
 `--full` adds a matching `aws[]` TOON block.
+
+The Jev provider gains a `jev` field in both `--json` tiers, carrying every window it counted:
+
+```json
+{
+  "jev": {
+    "today": {
+      "calls": 12,
+      "inputTokens": 2100000,
+      "outputTokens": 400000,
+      "tokens": 2500000,
+      "usd": 8.75,
+      "aud": 12.26
+    },
+    "cycle": {
+      "calls": 40,
+      "inputTokens": 8200000,
+      "outputTokens": 1600000,
+      "tokens": 9800000,
+      "usd": 34.3,
+      "aud": 48.05
+    },
+    "allTime": {
+      "calls": 91,
+      "inputTokens": 18000000,
+      "outputTokens": 3400000,
+      "tokens": 21400000,
+      "usd": 74.9,
+      "aud": 104.93
+    },
+    "cycleSince": "2026-09-01",
+    "cycleWindowDays": 22,
+    "lastCallAt": "2026-09-22T07:08:40+0000",
+    "usdPerMTok": 3.5
+  }
+}
+```
+
+`allTime` and `lastCallAt` appear only here: the card has room for today and the cycle, and the machine surfaces carry the rest.
+`usd` is present only when `jev.usdPerMTok` is configured and `aud` only when an FX rate is configured as well, so a reading taken without either is visibly missing that half rather than showing a converted guess.
+`--full` adds a matching `jev[]` TOON block, one row per window.
 
 ## Multiple accounts
 

@@ -7,5 +7,6 @@
   "subscriptions": {
     "claude": { "renewsDay": 5, "amountAud": 305 },
     "codex": { "renewsDay": 5, "amountAud": 35 }
-  }
+  },
+  "jev": { "usdPerMTok": 3.5 }
 }
