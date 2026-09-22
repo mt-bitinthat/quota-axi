@@ -369,9 +369,9 @@ CODEX_HOME=/path/to/codex-profile quota-axi --provider codex --profile-only --fu
 
 ## Box dashboard fork
 
-This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows.
-They are local billing facts shown beside the reading.
-Neither is a quota window, neither is ever sent to a provider, and neither is written into the quota cache.
+This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows, and three figure lines to the OpenRouter card.
+They are money shown beside the reading.
+None of them is a quota window, none is ever sent to a provider, and none is written into the quota cache.
 
 ```
 │   renews 5 Oct · $305 AUD · 13d               │
@@ -444,6 +444,26 @@ A cache reaching at least as far back as the window being read serves it; one wr
 Every report waits for it: the wait is a few seconds on a cold or stale cache and nothing otherwise, and a frame only reads `API-equiv 18d · …` when the figure is still being computed after that wait.
 The TOON and JSON surfaces render once, so they do wait.
 
+### OpenRouter figures
+
+An OpenRouter key with no spend cap has no quota window and no bound, so its card used to read only `unlimited`.
+It now shows the figures OpenRouter's own first-party endpoints already report: what is left of the credits bought, what this key has drawn over the vendor's daily, weekly and monthly windows, and the free-model request allowance.
+
+```
+│   credits  $16 AUD left · $180 used of $196   │
+│   today    $0.18 AUD · week $0.64 · month $20 │
+│   free     0 of 1000 requests today           │
+```
+
+The lines need `OPENROUTER_API_KEY` in the environment, or an `openrouter` entry in Pi's `auth.json` - the same credential the provider already reads, with no new source and no new permission.
+They come from two GET requests per refresh: the `/api/v1/key` call quota-axi already made, and one `/api/v1/credits` call beside it.
+A credits call that fails costs only its own line; the rest of the card still reports whatever the key endpoint said.
+
+Money figures are converted with `fx.audPerUsd` and labeled `AUD`, exactly as the spend line is, and stay in USD with a `USD` label when no rate is configured.
+A figure of ten dollars or more is shown in whole dollars and a smaller one keeps its cents, so a day's spend of 16 cents never reads as `$0`.
+Free-model requests are requests rather than money, so no rate reaches them.
+Each line drops its least useful segment rather than its own digits when the figures outgrow the card.
+
 ### Machine surfaces
 
 `--json` adds two optional fields to the Claude and Codex providers, with no renames and no re-nesting:
@@ -472,6 +492,37 @@ The TOON and JSON surfaces render once, so they do wait.
 `spend.status` is `measured`, `pending`, or `unavailable`, so a figure that has not arrived can never be read as no spend; `usd`, `aud`, and `refreshedAt` are present only for `measured`, `aud` only when a rate is configured, and `ratio` only alongside an AUD figure and a priced subscription.
 `--full` adds matching `subscriptions[]` and `apiSpend[]` TOON blocks.
 Both fields are derived locally on every read and are never cached, so no provider snapshot can carry them.
+
+The OpenRouter provider gains an `openrouter` field in both `--json` tiers, carrying each money figure in both currencies:
+
+```json
+{
+  "openrouter": {
+    "creditsUsd": {
+      "bought": 140,
+      "used": 128.506740485,
+      "remaining": 11.493259515
+    },
+    "creditsAud": { "bought": 196.14, "used": 180.04, "remaining": 16.1 },
+    "usageUsd": {
+      "allTime": 128.506740485,
+      "today": 0.12874695,
+      "week": 0.45737405,
+      "month": 13.925634871
+    },
+    "usageAud": {
+      "allTime": 180.04,
+      "today": 0.18,
+      "week": 0.64,
+      "month": 19.51
+    },
+    "freeModelRequests": { "used": 0, "limit": 1000, "remaining": 1000 }
+  }
+}
+```
+
+The `*Usd` half is what the vendor answered and the `*Aud` half is what the configured rate makes of it, so a reading taken without a rate is visibly missing its AUD half rather than silently showing a converted figure.
+`--full` adds a matching `openrouter[]` TOON block.
 
 ## Multiple accounts
 
