@@ -1,11 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Features
-
-- **box:** add a subscription renewal line and an API-equivalent 30-day spend line to the Claude and Codex cards, with matching `subscription` and `spend` fields in `--json` and `subscriptions[]` / `apiSpend[]` rows in `--full`. Subscription amounts, renewal days, and the AUD rate come from `~/.config/quota-axi/box.json`; the spend figure comes from ccusage, split into the two cards by model and cached for ten minutes so the human report never waits on it. See [README Box dashboard fork](README.md#box-dashboard-fork).
-
 ## [0.1.49](https://github.com/kunchenguid/quota-axi/compare/quota-axi-v0.1.48...quota-axi-v0.1.49) (2026-09-21)
 
 
