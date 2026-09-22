@@ -36,6 +36,7 @@ const originalMinimaxProvider = PROVIDERS.minimax;
 const originalMimoProvider = PROVIDERS.mimo;
 const originalDeepSeekProvider = PROVIDERS.deepseek;
 const originalOpenRouterProvider = PROVIDERS.openrouter;
+const originalAwsProvider = PROVIDERS.aws;
 const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 const originalCodexHome = process.env.CODEX_HOME;
@@ -63,6 +64,7 @@ afterEach(() => {
   PROVIDERS.mimo = originalMimoProvider;
   PROVIDERS.deepseek = originalDeepSeekProvider;
   PROVIDERS.openrouter = originalOpenRouterProvider;
+  PROVIDERS.aws = originalAwsProvider;
   vi.unstubAllGlobals();
   if (originalXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
   else process.env.XDG_CACHE_HOME = originalXdgCacheHome;
@@ -99,6 +101,7 @@ describe("CLI flag parsing", () => {
       "deepseek",
       "openrouter",
       "elevenlabs",
+      "aws",
     ]);
   });
 
@@ -142,6 +145,7 @@ describe("CLI flag parsing", () => {
           "deepseek",
           "openrouter",
           "elevenlabs",
+          "aws",
         ],
         json: true,
         full: true,
@@ -1581,6 +1585,7 @@ describe("default TOON decision blocks", () => {
       emptyFreshQuota("openrouter", "OpenRouter"),
     );
     PROVIDERS.elevenlabs = providerWithQuota(freshElevenLabsQuota());
+    PROVIDERS.aws = providerWithQuota(emptyFreshQuota("aws", "AWS"));
 
     const output = await capture([]);
     const named = new Set([
@@ -1591,6 +1596,7 @@ describe("default TOON decision blocks", () => {
     expect([...named].sort()).toEqual([
       "agy",
       "alibaba",
+      "aws",
       "claude",
       "codex",
       "commandcode",

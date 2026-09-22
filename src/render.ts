@@ -484,6 +484,7 @@ function auditBlocks(response: QuotaAxiResponse): string[] {
     encode({ subscriptions: subscriptionRows(response) }),
     encode({ apiSpend: apiSpendRows(response) }),
     encode({ openrouter: openRouterRows(response) }),
+    encode({ aws: awsRows(response) }),
   ];
 }
 
@@ -736,6 +737,32 @@ function openRouterRows(response: QuotaAxiResponse) {
         freeRequestsUsed: figures.freeModelRequests?.used ?? UNKNOWN,
         freeRequestsLimit: figures.freeModelRequests?.limit ?? UNKNOWN,
         freeRequestsRemaining: figures.freeModelRequests?.remaining ?? UNKNOWN,
+      },
+    ];
+  });
+}
+
+/**
+ * Box-dashboard fork: this box's session cost, as the card's rows. Both
+ * currencies sit side by side for the same reason the OpenRouter rows carry
+ * both - `usd` is the arithmetic's own currency, `aud` is what the operator's
+ * configured rate makes of it - so a reading with no rate is visibly missing
+ * its AUD half rather than silently showing a converted figure.
+ */
+function awsRows(response: QuotaAxiResponse) {
+  return response.providers.flatMap((provider) => {
+    const aws = provider.aws;
+    if (!aws) return [];
+    return [
+      {
+        ...providerColumns(provider),
+        instanceType: aws.instanceType,
+        region: aws.region,
+        uptimeHours: aws.uptimeHours,
+        ratePerHourUsd: aws.ratePerHourUsd,
+        ratePerHourAud: aws.ratePerHourAud ?? UNKNOWN,
+        sessionUsd: aws.sessionUsd,
+        sessionAud: aws.sessionAud ?? UNKNOWN,
       },
     ];
   });

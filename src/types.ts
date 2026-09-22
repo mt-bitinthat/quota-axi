@@ -14,7 +14,8 @@ export type ProviderId =
   | "mimo"
   | "deepseek"
   | "openrouter"
-  | "elevenlabs";
+  | "elevenlabs"
+  | "aws";
 
 export const PROVIDER_IDS = [
   "claude",
@@ -33,6 +34,7 @@ export const PROVIDER_IDS = [
   "deepseek",
   "openrouter",
   "elevenlabs",
+  "aws",
 ] as const satisfies readonly ProviderId[];
 
 export type ProviderSource =
@@ -43,6 +45,8 @@ export type ProviderSource =
   | "cli"
   | "api"
   | "web"
+  /** Box-dashboard fork: this instance's own EC2 metadata endpoint. */
+  | "imds"
   | "cache"
   | "unavailable";
 
@@ -354,6 +358,33 @@ export type ProviderOpenRouter = {
   freeModelRequests?: OpenRouterFreeModelRequests;
 };
 
+/**
+ * Box-dashboard fork: what this EC2 box has cost since it booted - hours since
+ * boot times the instance's on-demand rate.
+ *
+ * It is session cost, not the invoice: it counts nothing from before this boot,
+ * and nothing that is not on-demand compute. `sessionUsd` and `ratePerHourUsd`
+ * are the arithmetic's own currency; the AUD halves are derived from the
+ * operator's configured rate when the report is read, exactly as the OpenRouter
+ * figures are, and are simply absent when no rate is configured.
+ */
+export type ProviderAws = {
+  /** The instance size IMDS named, e.g. `t3.medium`. */
+  instanceType: string;
+  /** The region the rate table prices, e.g. `ap-southeast-2`. */
+  region: string;
+  /** On-demand USD per hour for this instance type in that region. */
+  ratePerHourUsd: number;
+  /** Hours since this boot. */
+  uptimeHours: number;
+  /** `uptimeHours` times `ratePerHourUsd`. */
+  sessionUsd: number;
+  /** Present only when `box.json` supplies a rate. */
+  sessionAud?: number;
+  /** Present only when `box.json` supplies a rate. */
+  ratePerHourAud?: number;
+};
+
 export type ProviderAccount = {
   /** Opaque local lane identity, stable across refresh and discovery order. */
   accountKey: string;
@@ -388,6 +419,11 @@ export type ProviderQuota = {
    * comes from the provider reading; the AUD half is derived at read time.
    */
   openrouter?: ProviderOpenRouter;
+  /**
+   * Box-dashboard fork: this box's session cost. The USD half comes from the
+   * provider reading; the AUD half is derived at read time.
+   */
+  aws?: ProviderAws;
   credits?: {
     remaining?: number;
     unlimited?: boolean;

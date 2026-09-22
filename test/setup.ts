@@ -39,3 +39,8 @@ process.env.XDG_CONFIG_HOME = join(
   `quota-axi-test-no-box-config-${process.pid}-${randomUUID()}`,
 );
 process.env.QUOTA_AXI_CCUSAGE = "off";
+
+// The aws card probes this box's own IMDSv2 endpoint. No suite may depend on
+// whether the machine running it is an EC2 instance, so the probe is off by
+// default and the tests that exercise it inject their own responder.
+process.env.QUOTA_AXI_AWS_IMDS = "off";

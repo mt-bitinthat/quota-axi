@@ -1,5 +1,6 @@
 import { agyAdapter } from "./agy.js";
 import { alibabaAdapter } from "./alibaba.js";
+import { awsAdapter } from "./aws.js";
 import { claudeAdapter } from "./claude.js";
 import { commandCodeAdapter } from "./commandcode.js";
 import { codexAdapter } from "./codex.js";
@@ -37,6 +38,7 @@ export const PROVIDERS: Record<ProviderId, ProviderAdapter> = {
   deepseek: deepseekAdapter,
   openrouter: openrouterAdapter,
   elevenlabs: elevenLabsAdapter,
+  aws: awsAdapter,
 };
 
 export function parseProviders(value: string | undefined): ProviderId[] {

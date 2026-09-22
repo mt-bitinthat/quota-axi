@@ -182,6 +182,14 @@ function semanticsFor(
       );
     case "elevenlabs":
       return elevenLabsSemantics(provider.windows, generatedAt);
+    case "aws":
+      // Box-dashboard fork: session cost is money already spent, not headroom.
+      // It bounds nothing - the box keeps running past any figure it reports -
+      // so there is no scope to publish an effective percentage for.
+      return unknownSemantics(
+        provider.windows,
+        "AWS reports what this box has cost since it booted, not a quota window. quota-axi exposes the session figure and infers no remaining allowance from it.",
+      );
   }
 }
 

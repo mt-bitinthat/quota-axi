@@ -10,6 +10,7 @@ import {
 import type {
   OpenRouterCredits,
   OpenRouterUsage,
+  ProviderAws,
   ProviderId,
   ProviderOpenRouter,
   ProviderQuota,
@@ -156,10 +157,12 @@ function annotateProvider(
           subscription?.amountAud,
         );
   const openrouter = openRouterAud(provider.openrouter, config?.fx?.audPerUsd);
+  const aws = awsAud(provider.aws, config?.fx?.audPerUsd);
   if (
     subscription === undefined &&
     spendField === undefined &&
-    openrouter === undefined
+    openrouter === undefined &&
+    aws === undefined
   )
     return provider;
   return {
@@ -167,6 +170,28 @@ function annotateProvider(
     ...(subscription ? { subscription } : {}),
     ...(spendField ? { spend: spendField } : {}),
     ...(openrouter ? { openrouter } : {}),
+    ...(aws ? { aws } : {}),
+  };
+}
+
+/**
+ * The AUD half of this box's session cost. The arithmetic itself is in USD,
+ * because that is the currency AWS prices the instance in, and the conversion
+ * happens here for the same reason the OpenRouter one does: the rate is applied
+ * fresh on every read rather than baked into the reading.
+ *
+ * The hourly rate keeps four decimals rather than two. A t3.nano costs under a
+ * cent an hour, and rounding the rate to cents would round it away.
+ */
+function awsAud(
+  figures: ProviderAws | undefined,
+  audPerUsd: number | undefined,
+): ProviderAws | undefined {
+  if (!figures || audPerUsd === undefined) return figures;
+  return {
+    ...figures,
+    sessionAud: round2(figures.sessionUsd * audPerUsd),
+    ratePerHourAud: round4(figures.ratePerHourUsd * audPerUsd),
   };
 }
 
@@ -266,4 +291,8 @@ function spendRatio(
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function round4(value: number): number {
+  return Math.round(value * 1e4) / 1e4;
 }

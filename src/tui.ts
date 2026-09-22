@@ -3,6 +3,7 @@ import type {
   OpenRouterCredits,
   OpenRouterFreeModelRequests,
   OpenRouterUsage,
+  ProviderAws,
   ProviderId,
   ProviderQuota,
   ProviderSpend,
@@ -89,6 +90,7 @@ const ACCENTS: Record<ProviderId, StyleSpec> = {
   deepseek: { rgb: [88, 160, 242], ansi16: "94", bold: true },
   openrouter: { rgb: [183, 148, 232], ansi16: "95", bold: true },
   elevenlabs: { rgb: [214, 170, 255], ansi16: "95", bold: true },
+  aws: { rgb: [255, 169, 77], ansi16: "93", bold: true },
 };
 
 const STYLES: Record<Exclude<StyleName, `accent:${ProviderId}`>, StyleSpec> = {
@@ -240,9 +242,14 @@ function buildLiveCard(provider: ProviderQuota, generatedAtMs: number): Card {
   // take the slot the bare `unlimited` line would otherwise have had.
   const openRouterHeadline =
     provider.windows.length === 0 ? openRouterCardLines(provider) : undefined;
+  // The aws card reports money already spent rather than headroom, so its two
+  // figure lines take the headline slot outright: there is no bound to draw.
+  const awsHeadline = awsCardLines(provider);
   const creditsLine = creditsOnlyHeadline(provider, stale);
   if (openRouterHeadline) {
     lines.push(...openRouterHeadline);
+  } else if (awsHeadline) {
+    lines.push(...awsHeadline);
   } else if (creditsLine) {
     lines.push(...creditsLine);
   } else if (hasWhollyUnknownWindowRelationships(provider)) {
@@ -729,18 +736,62 @@ function openRouterCardLines(provider: ProviderQuota): Line[] | undefined {
     rows.push(["free", freeRequestsText(figures.freeModelRequests)]);
   }
   if (rows.length === 0) return undefined;
-  return rows.map(([label, text]) =>
-    interior(
-      [
-        { text: "   " },
-        {
-          text: padEndDisplay(label, BOX_FIGURE_LABEL_WIDTH),
-          style: "label",
-        },
-        { text: truncate(text, BOX_FIGURE_WIDTH), style: "dim" },
-      ],
-      "border",
-    ),
+  return rows.map(([label, text]) => boxFigureLine(label, text));
+}
+
+/**
+ * Box-dashboard fork: this box's session cost - what the hours since boot have
+ * cost at this instance's on-demand rate, and the rate itself.
+ *
+ * It is session cost, not the invoice, and not a quota reading: it is never a
+ * bar and never a percentage, and it is labelled with the currency it is
+ * actually in, exactly as the other box figure lines are.
+ */
+function awsCardLines(provider: ProviderQuota): Line[] | undefined {
+  const aws = provider.aws;
+  if (!aws) return undefined;
+  // Without a configured rate the figures are still in the currency AWS prices
+  // the instance in, and the lines say so rather than implying AUD.
+  const aud = aws.sessionAud !== undefined && aws.ratePerHourAud !== undefined;
+  const unit = aud ? "AUD" : "USD";
+  const rows: [string, string][] = [
+    ["session", sessionCostText(aws, unit)],
+    ["rate", instanceRateText(aws, unit)],
+  ];
+  return rows.map(([label, text]) => boxFigureLine(label, text));
+}
+
+function sessionCostText(aws: ProviderAws, unit: string): string {
+  const cost = `${formatCardMoney(aws.sessionAud ?? aws.sessionUsd)} ${unit}`;
+  const uptime = formatUptime(aws.uptimeHours);
+  return firstFitting([`${cost} · ${uptime} up`, `${cost} · ${uptime}`, cost]);
+}
+
+function instanceRateText(aws: ProviderAws, unit: string): string {
+  const rate = `${formatCardMoney(aws.ratePerHourAud ?? aws.ratePerHourUsd)} ${unit}/h`;
+  return firstFitting([
+    `${rate} · ${aws.instanceType} ${aws.region}`,
+    `${rate} · ${aws.instanceType}`,
+    rate,
+  ]);
+}
+
+/** Whole hours and minutes: "5h 12m". Hours are never rolled up into days. */
+export function formatUptime(hours: number): string {
+  if (!Number.isFinite(hours) || hours < 0) return "?";
+  const totalMinutes = Math.floor(hours * 60);
+  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+}
+
+/** One `   ` gutter, one padded label, then the figures: the box figure grid. */
+function boxFigureLine(label: string, text: string): Line {
+  return interior(
+    [
+      { text: "   " },
+      { text: padEndDisplay(label, BOX_FIGURE_LABEL_WIDTH), style: "label" },
+      { text: truncate(text, BOX_FIGURE_WIDTH), style: "dim" },
+    ],
+    "border",
   );
 }
 
