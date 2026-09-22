@@ -1,5 +1,5 @@
 import type { ProviderSubscription } from "../types.js";
-import type { BoxSubscriptionEntry } from "./config.js";
+import { DEFAULT_WARN_DAYS, type BoxSubscriptionEntry } from "./config.js";
 
 /**
  * Next subscription renewal in the operator's local time.
@@ -14,6 +14,7 @@ import type { BoxSubscriptionEntry } from "./config.js";
 export function nextRenewal(
   entry: BoxSubscriptionEntry,
   now: Date,
+  warnDays: number = DEFAULT_WARN_DAYS,
 ): ProviderSubscription | undefined {
   const time = now.getTime();
   if (!Number.isFinite(time)) return undefined;
@@ -36,6 +37,7 @@ export function nextRenewal(
     renewsAt: isoDate(renewal),
     amountAud: entry.amountAud,
     daysUntil,
+    warnDays,
   };
 }
 

@@ -87,7 +87,9 @@ function annotateProvider(
   now: Date,
 ): ProviderQuota {
   const entry = config?.subscriptions[provider.provider];
-  const subscription = entry ? nextRenewal(entry, now) : undefined;
+  const subscription = entry
+    ? nextRenewal(entry, now, config?.warnDays)
+    : undefined;
   const bucket = SPEND_BUCKET[provider.provider];
   const spendField =
     bucket === undefined

@@ -644,9 +644,6 @@ function runwayVerdict(headline: EffectiveAvailability | undefined): Line {
   return [{ text, style: "warnBold" }];
 }
 
-/** Days of runway at which the renewal countdown stops being routine. */
-const RENEWAL_WARNING_DAYS = 3;
-
 const MONTH_NAMES = [
   "Jan",
   "Feb",
@@ -691,13 +688,13 @@ function boxCardLines(provider: ProviderQuota): Line[] {
 }
 
 function renewalLine(subscription: ProviderSubscription): Line {
-  const { renewsAt, amountAud, daysUntil } = subscription;
+  const { renewsAt, amountAud, daysUntil, warnDays } = subscription;
   const lead = `renews ${formatRenewalDate(renewsAt)} · ${formatMoney(amountAud)} AUD · `;
   return [
     { text: `   ${truncate(lead, CARD_INTERIOR - 4)}`, style: "dim" },
     {
       text: `${daysUntil}d`,
-      style: daysUntil <= RENEWAL_WARNING_DAYS ? "crit" : "dim",
+      style: daysUntil <= warnDays ? "crit" : "dim",
     },
   ];
 }

@@ -28,9 +28,13 @@ export type BoxSubscriptionEntry = {
 
 export type BoxConfig = {
   fx?: BoxFx;
+  /** Days before renewal at which the countdown turns red; default 3. */
+  warnDays?: number;
   /** Keyed by provider id; unknown keys are kept and simply never matched. */
   subscriptions: Record<string, BoxSubscriptionEntry>;
 };
+
+export const DEFAULT_WARN_DAYS = 3;
 
 export function boxConfigPath(): string {
   const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
@@ -47,11 +51,16 @@ export function readBoxConfig(path = boxConfigPath()): BoxConfig | undefined {
   const value = readJsonFile(path);
   if (!isRecord(value)) return undefined;
   const fx = parseFx(value.fx);
+  const warnDays = parseWarnDays(value.warnDays);
   const subscriptions = parseSubscriptions(value.subscriptions);
   if (fx === undefined && Object.keys(subscriptions).length === 0) {
     return undefined;
   }
-  return { ...(fx ? { fx } : {}), subscriptions };
+  return {
+    ...(fx ? { fx } : {}),
+    ...(warnDays === undefined ? {} : { warnDays }),
+    subscriptions,
+  };
 }
 
 function parseFx(value: unknown): BoxFx | undefined {
@@ -60,6 +69,14 @@ function parseFx(value: unknown): BoxFx | undefined {
   if (audPerUsd === undefined) return undefined;
   const asOf = typeof value.asOf === "string" ? value.asOf.trim() : "";
   return { audPerUsd, ...(asOf === "" ? {} : { asOf }) };
+}
+
+/** A whole number of days, zero or more; anything else falls back to the default. */
+function parseWarnDays(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return undefined;
+  }
+  return value;
 }
 
 function parseSubscriptions(

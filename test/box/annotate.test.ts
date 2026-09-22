@@ -66,11 +66,13 @@ describe("annotateBoxLines", () => {
       renewsAt: "2026-10-05",
       amountAud: 305,
       daysUntil: 13,
+      warnDays: 3,
     });
     expect(provider(response, "codex")?.subscription).toEqual({
       renewsAt: "2026-10-05",
       amountAud: 35,
       daysUntil: 13,
+      warnDays: 3,
     });
     // An unconfigured provider is simply not a subscription this box has.
     expect(provider(response, "grok")?.subscription).toBeUndefined();

@@ -60,7 +60,12 @@ function styledLine(lines: string[], needle: string): string {
 }
 
 const CLAUDE: BoxFields = {
-  subscription: { renewsAt: "2026-10-05", amountAud: 305, daysUntil: 13 },
+  subscription: {
+    renewsAt: "2026-10-05",
+    amountAud: 305,
+    daysUntil: 13,
+    warnDays: 3,
+  },
   spend: {
     windowDays: 30,
     status: "measured",
@@ -72,7 +77,12 @@ const CLAUDE: BoxFields = {
 };
 
 const CODEX: BoxFields = {
-  subscription: { renewsAt: "2026-10-05", amountAud: 35, daysUntil: 13 },
+  subscription: {
+    renewsAt: "2026-10-05",
+    amountAud: 35,
+    daysUntil: 13,
+    warnDays: 3,
+  },
   spend: {
     windowDays: 30,
     status: "measured",
@@ -124,7 +134,7 @@ describe("box dashboard card lines", () => {
   });
 
   it("marks the countdown red at three days and at zero, but not at four", () => {
-    const red = (daysUntil: number): boolean => {
+    const red = (daysUntil: number, warnDays = 3): boolean => {
       const lines = render(
         responseWith({
           claude: {
@@ -133,6 +143,7 @@ describe("box dashboard card lines", () => {
               renewsAt: "2026-10-05",
               amountAud: 305,
               daysUntil,
+              warnDays,
             },
           },
         }),
@@ -147,6 +158,11 @@ describe("box dashboard card lines", () => {
     expect(red(3)).toBe(true);
     expect(red(4)).toBe(false);
     expect(red(13)).toBe(false);
+    // The threshold comes from box.json's warnDays.
+    expect(red(7, 7)).toBe(true);
+    expect(red(8, 7)).toBe(false);
+    expect(red(0, 0)).toBe(true);
+    expect(red(1, 0)).toBe(false);
   });
 
   it("names the currency the figure was priced in when no rate is configured", () => {

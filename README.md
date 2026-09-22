@@ -386,6 +386,7 @@ A sample is committed at [docs/box.example.json](docs/box.example.json).
 ```json
 {
   "fx": { "audPerUsd": 1.401, "asOf": "2026-09-21" },
+  "warnDays": 3,
   "subscriptions": {
     "claude": { "renewsDay": 5, "amountAud": 305 },
     "codex": { "renewsDay": 5, "amountAud": 35 }
@@ -399,7 +400,7 @@ A malformed entry is dropped on its own, so one bad subscription never costs the
 `renewsDay` is a day of the month, 1-31, and the renewal is the next occurrence of that day on or after today in local time.
 A day past the end of a short month is clamped to that month's last day, so `31` renews on the 30th in a 30-day month and on the 28th or 29th in February.
 The countdown is whole calendar days, so the renewal day itself reads `0d` and a daylight-saving transition cannot make a day read as two.
-The `13d` segment turns red at three days or fewer.
+The `13d` segment turns red at `warnDays` days or fewer; `warnDays` is a whole number, zero or more, and defaults to 3 when absent or malformed.
 
 ### API-equivalent spend
 

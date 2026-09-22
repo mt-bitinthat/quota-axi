@@ -25,6 +25,7 @@ describe("readBoxConfig", () => {
     const path = writeConfig(
       JSON.stringify({
         fx: { audPerUsd: 1.401, asOf: "2026-09-21" },
+        warnDays: 7,
         subscriptions: {
           claude: { renewsDay: 5, amountAud: 305 },
           codex: { renewsDay: 5, amountAud: 35 },
@@ -33,11 +34,24 @@ describe("readBoxConfig", () => {
     );
     expect(readBoxConfig(path)).toEqual({
       fx: { audPerUsd: 1.401, asOf: "2026-09-21" },
+      warnDays: 7,
       subscriptions: {
         claude: { renewsDay: 5, amountAud: 305 },
         codex: { renewsDay: 5, amountAud: 35 },
       },
     });
+  });
+
+  it("drops a malformed warnDays so the default applies", () => {
+    for (const warnDays of [-1, 2.5, "3", null]) {
+      const path = writeConfig(
+        JSON.stringify({
+          warnDays,
+          subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+        }),
+      );
+      expect(readBoxConfig(path)?.warnDays).toBeUndefined();
+    }
   });
 
   it("resolves undefined for a missing file", () => {

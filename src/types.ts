@@ -279,6 +279,8 @@ export type ProviderSubscription = {
   amountAud: number;
   /** Whole days from today to `renewsAt`; `0` on the renewal day itself. */
   daysUntil: number;
+  /** Countdown at or below this many days renders as a warning. */
+  warnDays: number;
 };
 
 /**
