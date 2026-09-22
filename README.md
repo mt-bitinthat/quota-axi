@@ -367,6 +367,96 @@ CODEX_HOME=/path/to/codex-profile quota-axi --provider codex --profile-only --fu
 - Width comes from the terminal, clamped to 80-120 columns; below the two-up width the grid reflows to one column. Color honors `NO_COLOR`, `TERM=dumb`, and non-TTY stdout (the glyph skeleton is kept), re-enables with `FORCE_COLOR`, and uses truecolor when `COLORTERM` advertises it, falling back to 256-color then ANSI-16.
 - `--tui` composes with `--provider` scoping and `--full` (account identity and source-attempt footers). It is mutually exclusive with `--json` and only supported by the `quota` command.
 
+## Box dashboard fork
+
+This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows.
+They are local billing facts shown beside the reading.
+Neither is a quota window, neither is ever sent to a provider, and neither is written into the quota cache.
+
+```
+│   renews 5 Oct · $305 AUD · 13d               │
+│   API-equiv 30d · $10,379 AUD                 │
+```
+
+### `box.json`
+
+The subscription amounts and the AUD rate come from `$XDG_CONFIG_HOME/quota-axi/box.json`, defaulting to `~/.config/quota-axi/box.json`.
+A sample is committed at [docs/box.example.json](docs/box.example.json).
+
+```json
+{
+  "fx": { "audPerUsd": 1.401, "asOf": "2026-09-21" },
+  "subscriptions": {
+    "claude": { "renewsDay": 5, "amountAud": 305 },
+    "codex": { "renewsDay": 5, "amountAud": 35 }
+  }
+}
+```
+
+A missing file, a missing provider entry, and unparseable JSON are the same answer: the line is omitted.
+A malformed entry is dropped on its own, so one bad subscription never costs the others their line, and nothing about `box.json` can fail a provider reading or print a diagnostic.
+
+`renewsDay` is a day of the month, 1-31, and the renewal is the next occurrence of that day on or after today in local time.
+A day past the end of a short month is clamped to that month's last day, so `31` renews on the 30th in a 30-day month and on the 28th or 29th in February.
+The countdown is whole calendar days, so the renewal day itself reads `0d` and a daylight-saving transition cannot make a day read as two.
+The `13d` segment turns red at three days or fewer.
+
+### API-equivalent spend
+
+The second line is what the last 30 days of local agent traffic would have cost at published API list prices.
+It is an equivalence, not a bill: nothing on it was charged, and it is not a quota reading.
+
+The figure comes from [ccusage](https://github.com/ccusage/ccusage), which reads this machine's own agent transcripts and prices them against the **LiteLLM model price table** (`model_prices_and_context_window.json`) that ccusage embeds at build time from a locked revision.
+`ccusage --offline` uses that pre-cached table, and per-model overrides are possible in ccusage's own `ccusage.json`.
+Prices therefore move when ccusage ships a new pricing snapshot, not when quota-axi is updated.
+
+Install it user-local so the dashboard does not pay npx resolution latency:
+
+```sh
+npm install -g ccusage
+```
+
+Without it, quota-axi falls back to `npx -y ccusage@latest`; with neither available the line reads `API-equiv · unavailable (npm i -g ccusage)`.
+Set `QUOTA_AXI_CCUSAGE` to an explicit ccusage path to override discovery, or to `off` to disable the subprocess entirely.
+
+**Coverage.** ccusage counts Claude Code transcripts, Codex CLI sessions under `~/.codex/sessions`, and Pi sessions, which it reports with a `[pi] ` prefix on the model name.
+Costs are summed per model over the window: models that name a Claude model after any harness prefix go to the Claude card, and every other model goes to the Codex card.
+The two cards therefore sum to ccusage's own `totals.totalCost` for the same window, to the cent.
+
+**Currency.** Figures are converted with `fx.audPerUsd` and labeled `AUD`.
+Without a configured rate the figure stays in the currency ccusage priced it in and is labeled `USD`; no rate is ever guessed.
+
+**Timing.** The ccusage run takes about 3 seconds on a busy box, so it is never on the render path.
+It starts alongside the provider fetches, and its summary is cached for ten minutes at `$XDG_CACHE_HOME/quota-axi/ccusage-30d.json` (default `~/.cache/quota-axi/`), owner-readable only and written through a temporary file.
+The human report never waits for it: a frame with no figure yet reads `API-equiv 30d · …` and a later refresh fills it in.
+The TOON and JSON surfaces render once, so they do wait.
+
+### Machine surfaces
+
+`--json` adds two optional fields to the Claude and Codex providers, with no renames and no re-nesting:
+
+```json
+{
+  "subscription": {
+    "renewsAt": "2026-10-05",
+    "amountAud": 305,
+    "daysUntil": 13
+  },
+  "spend": {
+    "windowDays": 30,
+    "status": "measured",
+    "usd": 7409.01,
+    "aud": 10380.02,
+    "source": "ccusage",
+    "refreshedAt": "2026-09-22T03:34:56.066Z"
+  }
+}
+```
+
+`spend.status` is `measured`, `pending`, or `unavailable`, so a figure that has not arrived can never be read as no spend; `usd`, `aud`, and `refreshedAt` are present only for `measured`, and `aud` only when a rate is configured.
+`--full` adds matching `subscriptions[]` and `apiSpend[]` TOON blocks.
+Both fields are derived locally on every read and are never cached, so no provider snapshot can carry them.
+
 ## Multiple accounts
 
 A normal invocation reports every Codex ChatGPT subscription it can discover from sibling entries in one Pi `auth.json`.
