@@ -676,7 +676,7 @@ function boxCardLines(provider: ProviderQuota): Line[] {
       interior(
         [
           {
-            text: `   ${truncate(spendText(provider.spend), CARD_INTERIOR - 4)}`,
+            text: `   ${truncate(spendText(provider.spend, CARD_INTERIOR - 4), CARD_INTERIOR - 4)}`,
             style: "dim",
           },
         ],
@@ -699,7 +699,10 @@ function renewalLine(subscription: ProviderSubscription): Line {
   ];
 }
 
-export function spendText(spend: ProviderSpend): string {
+export function spendText(
+  spend: ProviderSpend,
+  width = CARD_INTERIOR - 4,
+): string {
   const lead = `API-equiv ${spend.windowDays}d · `;
   if (spend.status === "pending") return `${lead}…`;
   // No figure means no window to label, and the card is 49 columns wide: the
@@ -707,11 +710,33 @@ export function spendText(spend: ProviderSpend): string {
   if (spend.status === "unavailable") {
     return "API-equiv · unavailable (npm i -g ccusage)";
   }
-  if (spend.aud !== undefined) return `${lead}${formatMoney(spend.aud)} AUD`;
+  if (spend.aud !== undefined) {
+    return withRatio(
+      `${lead}${formatMoney(spend.aud)} AUD`,
+      spend.ratio,
+      width,
+    );
+  }
   // Without a configured rate the figure stays in the currency ccusage priced
   // it in rather than being converted at a guess.
   if (spend.usd !== undefined) return `${lead}${formatMoney(spend.usd)} USD`;
   return `${lead}…`;
+}
+
+/**
+ * The spend against the subscription, as a multiple of it. It is the first
+ * thing dropped when the line will not fit the card: the figure is what the
+ * line is for, and the multiple can be read off it, so a very large figure
+ * loses its ratio rather than its own digits.
+ */
+function withRatio(
+  text: string,
+  ratio: number | undefined,
+  width: number,
+): string {
+  if (ratio === undefined) return text;
+  const withIt = `${text} · ${ratio.toFixed(1)}x`;
+  return displayWidth(withIt) <= width ? withIt : text;
 }
 
 /** "2026-10-05" reads as "5 Oct": the calendar day, never shifted by a zone. */

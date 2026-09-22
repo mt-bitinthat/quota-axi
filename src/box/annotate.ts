@@ -145,7 +145,13 @@ function annotateProvider(
   const spendField =
     bucket === undefined || cycle === undefined
       ? undefined
-      : providerSpend(spend, bucket, cycle, config?.fx?.audPerUsd);
+      : providerSpend(
+          spend,
+          bucket,
+          cycle,
+          config?.fx?.audPerUsd,
+          subscription?.amountAud,
+        );
   if (subscription === undefined && spendField === undefined) return provider;
   return {
     ...provider,
@@ -159,6 +165,7 @@ function providerSpend(
   bucket: "claude" | "other",
   cycle: SpendCycle,
   audPerUsd: number | undefined,
+  amountAud: number | undefined,
 ): ProviderSpend {
   const base = {
     windowDays: cycle.windowDays,
@@ -168,15 +175,34 @@ function providerSpend(
   if (spend.status !== "measured") return { ...base, status: spend.status };
   const buckets = spendBucketsSince(spend.reading, cycle.since);
   const usd = bucket === "claude" ? buckets.claudeUsd : buckets.otherUsd;
+  // Without a rate the figure stays in the currency it was priced in rather
+  // than being converted at a guess; the card labels it USD.
+  const aud = audPerUsd === undefined ? undefined : round2(usd * audPerUsd);
+  const ratio = spendRatio(aud, amountAud);
   return {
     ...base,
     status: "measured",
     usd: round2(usd),
-    // Without a rate the figure stays in the currency it was priced in rather
-    // than being converted at a guess; the card labels it USD.
-    ...(audPerUsd === undefined ? {} : { aud: round2(usd * audPerUsd) }),
+    ...(aud === undefined ? {} : { aud }),
+    ...(ratio === undefined ? {} : { ratio }),
     refreshedAt: spend.reading.refreshedAt,
   };
+}
+
+/**
+ * How many times the subscription the same traffic would have cost at API list
+ * prices. Both sides have to be in AUD for the comparison to mean anything, and
+ * a free or unpriced plan has no multiple of itself, so either missing half
+ * leaves the ratio off rather than filled in with something that reads as one.
+ */
+function spendRatio(
+  aud: number | undefined,
+  amountAud: number | undefined,
+): number | undefined {
+  if (aud === undefined || amountAud === undefined || amountAud === 0) {
+    return undefined;
+  }
+  return Math.round((aud / amountAud) * 10) / 10;
 }
 
 function round2(value: number): number {

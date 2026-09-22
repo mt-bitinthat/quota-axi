@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { renderQuotaTui } from "../../src/tui.js";
+import { renderQuotaTui, spendText } from "../../src/tui.js";
 import { fixtureResponse } from "../fixtures/tui-response.js";
-import type { ProviderQuota, QuotaAxiResponse } from "../../src/types.js";
+import type {
+  ProviderQuota,
+  ProviderSpend,
+  QuotaAxiResponse,
+} from "../../src/types.js";
 
 const CARD_COLUMNS = 49;
 
@@ -72,6 +76,7 @@ const CLAUDE: BoxFields = {
     status: "measured",
     usd: 3654.53,
     aud: 5120.0,
+    ratio: 16.8,
     source: "ccusage",
     refreshedAt: "2026-09-22T03:00:00.000Z",
   },
@@ -90,6 +95,7 @@ const CODEX: BoxFields = {
     status: "measured",
     usd: 30.1,
     aud: 42.17,
+    ratio: 1.2,
     source: "ccusage",
     refreshedAt: "2026-09-22T03:00:00.000Z",
   },
@@ -102,15 +108,56 @@ describe("box dashboard card lines", () => {
       "renews 5 Oct · $305 AUD · 13d",
     );
     expect(cardLine(lines, 0, "API-equiv")).toContain(
-      "API-equiv 18d · $5,120 AUD",
+      "API-equiv 18d · $5,120 AUD · 16.8x",
     );
     expect(cardLine(lines, 1, "renews")).toContain(
       "renews 5 Oct · $35 AUD · 13d",
     );
     expect(cardLine(lines, 1, "API-equiv")).toContain(
-      "API-equiv 18d · $42 AUD",
+      "API-equiv 18d · $42 AUD · 1.2x",
     );
   });
+
+  it("ends the spend line with the multiple of the subscription", () => {
+    const lines = render(responseWith({ claude: CLAUDE }));
+    const line = cardLine(lines, 0, "API-equiv");
+    expect(line).toContain("API-equiv 18d · $5,120 AUD · 16.8x");
+    // Plain text: no escape of its own is opened between figure and ratio, so
+    // the ratio is carried by the same dim run as the rest of the line.
+    const styled = render(responseWith({ claude: CLAUDE }), "truecolor");
+    expect(styledLine(styled, "API-equiv")).toContain("AUD · 16.8x");
+    // A whole multiple still carries its decimal, so the column reads evenly.
+    expect(spendText({ ...(CLAUDE.spend as ProviderSpend), ratio: 34 })).toBe(
+      "API-equiv 18d · $5,120 AUD · 34.0x",
+    );
+  });
+
+  it("leaves the line without a ratio when there is none", () => {
+    const spend: ProviderSpend = { ...(CLAUDE.spend as ProviderSpend) };
+    delete spend.ratio;
+    const lines = render(responseWith({ claude: { spend } }));
+    const line = cardLine(lines, 0, "API-equiv");
+    expect(line).toContain("API-equiv 18d · $5,120 AUD");
+    expect(line).not.toContain("x");
+  });
+
+  it("drops the ratio rather than the figure when the line will not fit", () => {
+    const huge: ProviderSpend = {
+      ...(CLAUDE.spend as ProviderSpend),
+      aud: 999_999_999_999,
+      ratio: 3_278_688.5,
+    };
+    // The figure alone fits the card interior; the figure plus the ratio does not.
+    expect(spendText(huge)).toBe("API-equiv 18d · $999,999,999,999 AUD");
+    const line = cardLine(lines(huge), 0, "API-equiv");
+    expect(line).toContain("API-equiv 18d · $999,999,999,999 AUD");
+    expect(line).not.toContain("…");
+    expect(line).not.toContain("3,278,688");
+  });
+
+  function lines(spend: ProviderSpend): string[] {
+    return render(responseWith({ claude: { ...CLAUDE, spend } }));
+  }
 
   it("adds only the two lines, and leaves the rest of the grid alone", () => {
     const plain = render(fixtureResponse());

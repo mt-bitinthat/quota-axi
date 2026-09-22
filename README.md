@@ -375,7 +375,7 @@ Neither is a quota window, neither is ever sent to a provider, and neither is wr
 
 ```
 │   renews 5 Oct · $305 AUD · 13d               │
-│   API-equiv 18d · $10,379 AUD                 │
+│   API-equiv 18d · $10,379 AUD · 34.0x         │
 ```
 
 ### `box.json`
@@ -433,6 +433,9 @@ A day ccusage returns without a calendar date is dropped rather than counted, be
 **Currency.** Figures are converted with `fx.audPerUsd` and labeled `AUD`.
 Without a configured rate the figure stays in the currency ccusage priced it in and is labeled `USD`; no rate is ever guessed.
 
+**Ratio.** The line ends in the AUD figure over the subscription's own `amountAud`, to one decimal: `· 34.0x` is this cycle's traffic costing 34 times the plan it ran on.
+It is omitted when there is no AUD figure, no subscription entry, or an `amountAud` of 0, and it is the first segment dropped when a very large figure would push the line past the card interior - the figure is never the thing that gives way.
+
 **Timing.** The ccusage run takes about 3 seconds on a busy box, so it is never on the render path.
 One run answers every card: it asks for the earliest cycle start any configured provider needs, and each card's window is then a filter over the priced days it returned.
 A cycle rolling over, or a second card billed on another day of the month, therefore costs no second subprocess.
@@ -458,6 +461,7 @@ The TOON and JSON surfaces render once, so they do wait.
     "status": "measured",
     "usd": 7409.01,
     "aud": 10380.02,
+    "ratio": 34.0,
     "source": "ccusage",
     "refreshedAt": "2026-09-22T03:34:56.066Z"
   }
@@ -465,7 +469,7 @@ The TOON and JSON surfaces render once, so they do wait.
 ```
 
 `spend.windowDays` is the number of days in the window, counted inclusively, and `spend.since` is the ISO calendar date it starts on.
-`spend.status` is `measured`, `pending`, or `unavailable`, so a figure that has not arrived can never be read as no spend; `usd`, `aud`, and `refreshedAt` are present only for `measured`, and `aud` only when a rate is configured.
+`spend.status` is `measured`, `pending`, or `unavailable`, so a figure that has not arrived can never be read as no spend; `usd`, `aud`, and `refreshedAt` are present only for `measured`, `aud` only when a rate is configured, and `ratio` only alongside an AUD figure and a priced subscription.
 `--full` adds matching `subscriptions[]` and `apiSpend[]` TOON blocks.
 Both fields are derived locally on every read and are never cached, so no provider snapshot can carry them.
 

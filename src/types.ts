@@ -301,6 +301,12 @@ export type ProviderSpend = {
   usd?: number;
   /** Present only when `status` is `measured` and box.json supplies a rate. */
   aud?: number;
+  /**
+   * `aud` over the subscription's own AUD price, to one decimal: how many times
+   * the plan the same traffic would have cost at API list prices. Present only
+   * alongside an AUD figure and a priced subscription.
+   */
+  ratio?: number;
   source: "ccusage";
   /** When the underlying ccusage reading was taken. */
   refreshedAt?: string;

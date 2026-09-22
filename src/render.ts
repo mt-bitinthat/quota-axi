@@ -695,6 +695,7 @@ function apiSpendRows(response: QuotaAxiResponse) {
             status: provider.spend.status,
             usd: provider.spend.usd ?? UNKNOWN,
             aud: provider.spend.aud ?? UNKNOWN,
+            ratio: provider.spend.ratio ?? UNKNOWN,
             source: provider.spend.source,
             refreshedAt: provider.spend.refreshedAt ?? NONE,
           },

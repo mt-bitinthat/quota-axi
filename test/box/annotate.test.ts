@@ -109,6 +109,8 @@ describe("annotateBoxLines", () => {
       status: "measured",
       usd: 120,
       aud: 240,
+      // $240 of traffic against a $305 plan.
+      ratio: 0.8,
       source: "ccusage",
       refreshedAt: NOW.toISOString(),
     });
@@ -192,6 +194,74 @@ describe("annotateBoxLines", () => {
       windowDays: 3,
       since: "2026-09-20",
       usd: 3,
+    });
+  });
+
+  it("reports the spend as a multiple of the subscription it is billed for", async () => {
+    const response = await annotate({
+      configPath: configPath({
+        fx: { audPerUsd: 2 },
+        subscriptions: {
+          claude: { renewsDay: 5, amountAud: 7 },
+          codex: { renewsDay: 5, amountAud: 35 },
+        },
+      }),
+    });
+    // $240 over a $7 plan, to one decimal.
+    expect(provider(response, "claude")?.spend?.ratio).toBe(34.3);
+    // $60 over a $35 plan.
+    expect(provider(response, "codex")?.spend?.ratio).toBe(1.7);
+  });
+
+  it("omits the ratio when there is nothing to divide", async () => {
+    // No AUD figure: the spend is priced in USD and the plan in AUD.
+    const noRate = await annotate({
+      configPath: configPath({
+        subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+      }),
+    });
+    expect(
+      noRate.providers.find((p) => p.provider === "claude")?.spend?.aud,
+    ).toBeUndefined();
+    expect(provider(noRate, "claude")?.spend?.ratio).toBeUndefined();
+
+    // No subscription: codex is not a plan this box is billed for.
+    const noSubscription = await annotate({
+      configPath: configPath({
+        fx: { audPerUsd: 2 },
+        subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+      }),
+    });
+    expect(provider(noSubscription, "codex")?.spend?.aud).toBe(60);
+    expect(provider(noSubscription, "codex")?.spend?.ratio).toBeUndefined();
+
+    // A plan priced at zero has no multiple of itself.
+    const free = await annotate({
+      configPath: configPath({
+        fx: { audPerUsd: 2 },
+        subscriptions: { claude: { renewsDay: 5, amountAud: 0 } },
+      }),
+    });
+    expect(provider(free, "claude")?.spend?.aud).toBe(240);
+    expect(provider(free, "claude")?.spend?.ratio).toBeUndefined();
+  });
+
+  it("reports an unmeasured figure with no ratio", async () => {
+    const response = await annotate({
+      configPath: configPath({
+        fx: { audPerUsd: 2 },
+        subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+      }),
+      spendDeps: {
+        ...spendDeps(),
+        run: () => Promise.reject(new Error("ccusage_unavailable")),
+      },
+    });
+    expect(provider(response, "claude")?.spend).toEqual({
+      windowDays: 18,
+      since: "2026-09-05",
+      status: "unavailable",
+      source: "ccusage",
     });
   });
 
