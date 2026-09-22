@@ -312,6 +312,48 @@ export type ProviderSpend = {
   refreshedAt?: string;
 };
 
+/**
+ * Box-dashboard fork: the money figures OpenRouter's own key and credits
+ * endpoints report, which its cards show instead of a bare `unlimited`.
+ *
+ * Both halves are kept: `*Usd` is what the vendor answered and is the only form
+ * that would ever be cached, and `*Aud` is derived from the operator's
+ * configured rate when the report is read. A reading without a configured rate
+ * simply has no AUD half rather than a figure converted at a guess.
+ */
+export type OpenRouterCredits = {
+  /** Credits bought on the account, all time. */
+  bought: number;
+  /** Credits spent against them, all time. */
+  used: number;
+  /** `bought` less `used`; negative when the account is overdrawn. */
+  remaining: number;
+};
+
+export type OpenRouterUsage = {
+  allTime: number;
+  today: number;
+  week: number;
+  month: number;
+};
+
+/** The free-model request allowance, in requests rather than money. */
+export type OpenRouterFreeModelRequests = {
+  used: number;
+  limit: number;
+  remaining: number;
+};
+
+export type ProviderOpenRouter = {
+  creditsUsd?: OpenRouterCredits;
+  /** Present only when `box.json` supplies a rate. */
+  creditsAud?: OpenRouterCredits;
+  usageUsd?: OpenRouterUsage;
+  /** Present only when `box.json` supplies a rate. */
+  usageAud?: OpenRouterUsage;
+  freeModelRequests?: OpenRouterFreeModelRequests;
+};
+
 export type ProviderAccount = {
   /** Opaque local lane identity, stable across refresh and discovery order. */
   accountKey: string;
@@ -341,6 +383,11 @@ export type ProviderQuota = {
   subscription?: ProviderSubscription;
   /** Box-dashboard fork: API-equivalent spend. Derived, never cached. */
   spend?: ProviderSpend;
+  /**
+   * Box-dashboard fork: OpenRouter's own credit and usage figures. The USD half
+   * comes from the provider reading; the AUD half is derived at read time.
+   */
+  openrouter?: ProviderOpenRouter;
   credits?: {
     remaining?: number;
     unlimited?: boolean;

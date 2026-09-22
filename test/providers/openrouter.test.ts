@@ -2,33 +2,50 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createOpenRouterAdapter,
   extractOpenRouterCredential,
+  normalizeOpenRouterCredits,
   normalizeOpenRouterPayload,
+  OPENROUTER_CREDITS_URL,
+  OPENROUTER_KEY_URL,
   resolveOpenRouterCredentials,
 } from "../../src/providers/openrouter.js";
+import KEY_FIXTURE from "../fixtures/openrouter/key.json" with { type: "json" };
+import CREDITS_FIXTURE from "../fixtures/openrouter/credits.json" with { type: "json" };
 
 const OPTIONS = { allowKeychainPrompt: false, refreshCredentials: false };
 const KEY = "synthetic-openrouter-key";
 
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** Answer each endpoint with its own body, the way the vendor does. */
+function bothEndpoints(key: unknown, credits: unknown) {
+  return vi.fn(async (url: string) =>
+    url === OPENROUTER_CREDITS_URL ? json(credits) : json(key),
+  );
+}
+
 describe("OpenRouter provider", () => {
   it("reports the key spend cap and remaining balance", async () => {
-    const request = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          data: {
-            label: "personal",
-            limit: 100,
-            limit_remaining: 73.25,
-            limit_reset: "Daily",
-            usage: 26.75,
-            usage_daily: 5,
-            usage_weekly: 15,
-            usage_monthly: 26.75,
-            is_free_tier: false,
-          },
-        }),
-        { headers: { "content-type": "application/json" } },
-      );
-    });
+    const request = vi.fn(async (url: string) =>
+      url === OPENROUTER_CREDITS_URL
+        ? json({ data: { total_credits: 200, total_usage: 26.75 } })
+        : json({
+            data: {
+              label: "personal",
+              limit: 100,
+              limit_remaining: 73.25,
+              limit_reset: "Daily",
+              usage: 26.75,
+              usage_daily: 5,
+              usage_weekly: 15,
+              usage_monthly: 26.75,
+              is_free_tier: false,
+            },
+          }),
+    );
 
     const report = await createOpenRouterAdapter({
       credential: () => ({
@@ -59,7 +76,10 @@ describe("OpenRouter provider", () => {
       }),
     ]);
     expect(JSON.stringify(report)).not.toContain(KEY);
-    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.calls.map((call) => call[0])).toEqual([
+      OPENROUTER_KEY_URL,
+      OPENROUTER_CREDITS_URL,
+    ]);
     const init = request.mock.calls[0][1];
     expect(new Headers(init?.headers).get("authorization")).toBe(
       "Bearer " + KEY,
@@ -105,7 +125,8 @@ describe("OpenRouter provider", () => {
       ],
       credits: { remaining: 40, unit: "usd" },
     });
-    expect(request).toHaveBeenCalledTimes(2);
+    // Key rejected, then the working key's own key and credits reads.
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it("treats a null cap as unlimited and omits the window", async () => {
@@ -209,6 +230,100 @@ describe("OpenRouter provider", () => {
       }),
     ]);
     expect(report.credits).toEqual({ remaining: 0, unit: "usd" });
+  });
+
+  it("publishes both endpoints' figures in USD", async () => {
+    const request = bothEndpoints(KEY_FIXTURE, CREDITS_FIXTURE);
+    const report = await createOpenRouterAdapter({
+      credential: () => ({
+        status: "available",
+        key: KEY,
+        source: "env:OPENROUTER_API_KEY",
+      }),
+      fetch: request,
+      now: () => Date.parse("2026-09-22T00:00:00.000Z"),
+    }).fetchQuota(OPTIONS);
+
+    expect(report.openrouter).toEqual({
+      creditsUsd: {
+        bought: 140,
+        used: 128.506740485,
+        remaining: 140 - 128.506740485,
+      },
+      usageUsd: {
+        allTime: 128.506740485,
+        today: 0.12874695,
+        week: 0.45737405,
+        month: 13.925634871,
+      },
+      freeModelRequests: { used: 0, limit: 1000, remaining: 1000 },
+    });
+    // Raw USD only: the data layer never converts.
+    expect(JSON.stringify(report.openrouter)).not.toContain("aud");
+    const creditsInit = request.mock.calls[1][1];
+    expect(new Headers(creditsInit?.headers).get("authorization")).toBe(
+      "Bearer " + KEY,
+    );
+  });
+
+  it("keeps the key figures when the credits call fails", async () => {
+    const request = vi.fn(async (url: string) =>
+      url === OPENROUTER_CREDITS_URL
+        ? new Response(null, { status: 500 })
+        : json(KEY_FIXTURE),
+    );
+    const report = await createOpenRouterAdapter({
+      credential: () => ({
+        status: "available",
+        key: KEY,
+        source: "env:OPENROUTER_API_KEY",
+      }),
+      fetch: request,
+      now: () => Date.parse("2026-09-22T00:00:00.000Z"),
+    }).fetchQuota(OPTIONS);
+
+    expect(report.state.status).toBe("fresh");
+    expect(report.openrouter?.creditsUsd).toBeUndefined();
+    expect(report.openrouter?.usageUsd).toEqual({
+      allTime: 128.506740485,
+      today: 0.12874695,
+      week: 0.45737405,
+      month: 13.925634871,
+    });
+    expect(report.openrouter?.freeModelRequests).toEqual({
+      used: 0,
+      limit: 1000,
+      remaining: 1000,
+    });
+  });
+
+  it("omits a usage row the endpoint reported only half of", async () => {
+    const report = await createOpenRouterAdapter({
+      credential: () => ({
+        status: "available",
+        key: KEY,
+        source: "env:OPENROUTER_API_KEY",
+      }),
+      fetch: bothEndpoints(
+        { data: { limit: null, usage: 10, usage_daily: 1 } },
+        { data: {} },
+      ),
+      now: () => Date.parse("2026-09-22T00:00:00.000Z"),
+    }).fetchQuota(OPTIONS);
+
+    expect(report.state.status).toBe("fresh");
+    expect(report.openrouter).toBeUndefined();
+  });
+
+  it("reads the credits endpoint's two figures", () => {
+    expect(normalizeOpenRouterCredits(CREDITS_FIXTURE)).toEqual({
+      bought: 140,
+      used: 128.506740485,
+    });
+    expect(normalizeOpenRouterCredits({ data: { total_credits: 10 } })).toBe(
+      undefined,
+    );
+    expect(normalizeOpenRouterCredits({ error: "nope" })).toBe(undefined);
   });
 
   it("rejects an invalid payload", () => {

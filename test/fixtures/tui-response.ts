@@ -214,6 +214,37 @@ export function grokProvider(): ProviderQuota {
   };
 }
 
+/**
+ * Box-dashboard fork: an uncapped OpenRouter key. It has no spend cap, so it
+ * reports no window and no bound - only the vendor's own credit and usage
+ * figures, in the USD the adapter read them in.
+ */
+export function openRouterProvider(): ProviderQuota {
+  return {
+    provider: "openrouter",
+    label: "OpenRouter",
+    source: "api",
+    windows: [],
+    credits: { unlimited: true, unit: "usd" },
+    openrouter: {
+      creditsUsd: { bought: 140, used: 128.506740485, remaining: 11.493259515 },
+      usageUsd: {
+        allTime: 128.506740485,
+        today: 0.12874695,
+        week: 0.45737405,
+        month: 13.925634871,
+      },
+      freeModelRequests: { used: 0, limit: 1000, remaining: 1000 },
+    },
+    state: {
+      status: "fresh",
+      stale: false,
+      refreshedAt: GENERATED_AT,
+      sourcesTried: ["env:OPENROUTER_API_KEY"],
+    },
+  };
+}
+
 export function signedOutProvider(
   provider: "cursor" | "copilot" | "kimi",
   error: string,

@@ -8,7 +8,10 @@ import {
   type SpendResult,
 } from "../spend/ccusage.js";
 import type {
+  OpenRouterCredits,
+  OpenRouterUsage,
   ProviderId,
+  ProviderOpenRouter,
   ProviderQuota,
   ProviderSpend,
   QuotaAxiResponse,
@@ -152,11 +155,67 @@ function annotateProvider(
           config?.fx?.audPerUsd,
           subscription?.amountAud,
         );
-  if (subscription === undefined && spendField === undefined) return provider;
+  const openrouter = openRouterAud(provider.openrouter, config?.fx?.audPerUsd);
+  if (
+    subscription === undefined &&
+    spendField === undefined &&
+    openrouter === undefined
+  )
+    return provider;
   return {
     ...provider,
     ...(subscription ? { subscription } : {}),
     ...(spendField ? { spend: spendField } : {}),
+    ...(openrouter ? { openrouter } : {}),
+  };
+}
+
+/**
+ * The AUD half of OpenRouter's own figures, mirroring the USD the provider
+ * reported. Like the spend line, the conversion happens here rather than in the
+ * adapter so the reading stays in the currency the vendor priced it in and the
+ * rate is applied fresh every time the report is read.
+ *
+ * Without a configured rate the figures keep only their USD half, which is what
+ * the card labels them as: converting at a guess would be a worse answer than
+ * naming the currency.
+ */
+function openRouterAud(
+  figures: ProviderOpenRouter | undefined,
+  audPerUsd: number | undefined,
+): ProviderOpenRouter | undefined {
+  if (!figures || audPerUsd === undefined) return figures;
+  return {
+    ...figures,
+    ...(figures.creditsUsd
+      ? { creditsAud: convertCredits(figures.creditsUsd, audPerUsd) }
+      : {}),
+    ...(figures.usageUsd
+      ? { usageAud: convertUsage(figures.usageUsd, audPerUsd) }
+      : {}),
+  };
+}
+
+function convertCredits(
+  credits: OpenRouterCredits,
+  audPerUsd: number,
+): OpenRouterCredits {
+  return {
+    bought: round2(credits.bought * audPerUsd),
+    used: round2(credits.used * audPerUsd),
+    remaining: round2(credits.remaining * audPerUsd),
+  };
+}
+
+function convertUsage(
+  usage: OpenRouterUsage,
+  audPerUsd: number,
+): OpenRouterUsage {
+  return {
+    allTime: round2(usage.allTime * audPerUsd),
+    today: round2(usage.today * audPerUsd),
+    week: round2(usage.week * audPerUsd),
+    month: round2(usage.month * audPerUsd),
   };
 }
 

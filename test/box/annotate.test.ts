@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { annotateBoxLines } from "../../src/box/annotate.js";
 import { resetCcusageState, type SpendDeps } from "../../src/spend/ccusage.js";
-import { fixtureResponse } from "../fixtures/tui-response.js";
+import {
+  fixtureResponse,
+  openRouterProvider,
+} from "../fixtures/tui-response.js";
 import { ccusagePayload } from "../fixtures/ccusage.js";
 import type { QuotaAxiResponse } from "../../src/types.js";
 
@@ -28,13 +31,23 @@ function spendDeps(): SpendDeps {
 
 function annotate(
   overrides: Partial<Parameters<typeof annotateBoxLines>[1]> = {},
+  response: QuotaAxiResponse = fixtureResponse(),
 ): Promise<QuotaAxiResponse> {
-  return annotateBoxLines(fixtureResponse(), {
+  return annotateBoxLines(response, {
     awaitSpend: true,
     now: NOW,
     spendDeps: spendDeps(),
     ...overrides,
   });
+}
+
+/** The fixture fleet plus the uncapped OpenRouter card. */
+function withOpenRouter(): QuotaAxiResponse {
+  const response = fixtureResponse();
+  return {
+    ...response,
+    providers: [...response.providers, openRouterProvider()],
+  };
 }
 
 function provider(response: QuotaAxiResponse, id: string) {
@@ -310,5 +323,61 @@ describe("annotateBoxLines", () => {
       status: "unavailable",
       source: "ccusage",
     });
+  });
+  it("mirrors the OpenRouter figures into AUD at the configured rate", async () => {
+    const response = await annotate(
+      {
+        configPath: configPath({ fx: { audPerUsd: 1.401 }, subscriptions: {} }),
+      },
+      withOpenRouter(),
+    );
+
+    const openrouter = provider(response, "openrouter")?.openrouter;
+    // The USD half is untouched: it is what the vendor reported.
+    expect(openrouter?.creditsUsd).toEqual({
+      bought: 140,
+      used: 128.506740485,
+      remaining: 11.493259515,
+    });
+    expect(openrouter?.creditsAud).toEqual({
+      bought: 196.14,
+      used: 180.04,
+      remaining: 16.1,
+    });
+    expect(openrouter?.usageAud).toEqual({
+      allTime: 180.04,
+      today: 0.18,
+      week: 0.64,
+      month: 19.51,
+    });
+    // Requests are not money, so the rate never reaches them.
+    expect(openrouter?.freeModelRequests).toEqual({
+      used: 0,
+      limit: 1000,
+      remaining: 1000,
+    });
+  });
+
+  it("leaves the OpenRouter figures in USD when no rate is configured", async () => {
+    const response = await annotate(
+      {
+        configPath: configPath({
+          subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+        }),
+      },
+      withOpenRouter(),
+    );
+
+    const openrouter = provider(response, "openrouter")?.openrouter;
+    expect(openrouter?.creditsUsd?.remaining).toBeCloseTo(11.493259515, 9);
+    expect(openrouter?.creditsAud).toBeUndefined();
+    expect(openrouter?.usageAud).toBeUndefined();
+  });
+
+  it("leaves a provider with no OpenRouter figures alone", async () => {
+    const response = await annotate({
+      configPath: configPath({ fx: { audPerUsd: 1.401 }, subscriptions: {} }),
+    });
+    expect(provider(response, "grok")?.openrouter).toBeUndefined();
   });
 });
