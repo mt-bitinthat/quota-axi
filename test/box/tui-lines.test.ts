@@ -182,6 +182,25 @@ describe("box dashboard card lines", () => {
     expect(lines.some((line) => line.includes("API-equiv"))).toBe(false);
   });
 
+  it("keeps the cents of a configured amount and drops them from a whole one", () => {
+    const line = (amountAud: number): string =>
+      cardLine(
+        render(
+          responseWith({
+            claude: {
+              ...CLAUDE,
+              subscription: { ...CLAUDE.subscription!, amountAud },
+            },
+          }),
+        ),
+        0,
+        "renews",
+      );
+    expect(line(27.27)).toContain("$27.27 AUD");
+    expect(line(340)).toContain("$340 AUD");
+    expect(line(1234.5)).toContain("$1,234.50 AUD");
+  });
+
   it("marks the countdown red at three days and at zero, but not at four", () => {
     const red = (daysUntil: number, warnDays = 3): boolean => {
       const lines = render(

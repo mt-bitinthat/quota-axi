@@ -689,7 +689,7 @@ function boxCardLines(provider: ProviderQuota): Line[] {
 
 function renewalLine(subscription: ProviderSubscription): Line {
   const { renewsAt, amountAud, daysUntil, warnDays } = subscription;
-  const lead = `renews ${formatRenewalDate(renewsAt)} · ${formatMoney(amountAud)} AUD · `;
+  const lead = `renews ${formatRenewalDate(renewsAt)} · ${formatConfiguredMoney(amountAud)} AUD · `;
   return [
     { text: `   ${truncate(lead, CARD_INTERIOR - 4)}`, style: "dim" },
     {
@@ -756,6 +756,17 @@ const MONEY_FORMAT = new Intl.NumberFormat("en-US", {
 export function formatMoney(amount: number): string {
   if (!Number.isFinite(amount)) return "?";
   return `$${MONEY_FORMAT.format(Math.round(amount))}`;
+}
+
+/**
+ * A configured amount is shown as the operator wrote it: whole dollars stay
+ * whole, and cents are kept rather than rounded away, so a $27.27 plan never
+ * reads as $27.
+ */
+export function formatConfiguredMoney(amount: number): string {
+  if (!Number.isFinite(amount)) return "?";
+  if (Number.isInteger(amount)) return formatMoney(amount);
+  return `$${MONEY_FORMAT.format(Math.floor(amount))}${amount.toFixed(2).slice(-3)}`;
 }
 
 function cardNotes(provider: ProviderQuota): string[] {
