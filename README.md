@@ -369,7 +369,7 @@ CODEX_HOME=/path/to/codex-profile quota-axi --provider codex --profile-only --fu
 
 ## Box dashboard fork
 
-This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows, and three figure lines to the OpenRouter card.
+This fork adds two operator-facing money lines to the Claude and Codex cards, under the window rows, three figure lines to the OpenRouter card, and an `aws` card carrying what this box has cost since it booted.
 They are money shown beside the reading.
 None of them is a quota window, none is ever sent to a provider, and none is written into the quota cache.
 
@@ -464,6 +464,40 @@ A figure of ten dollars or more is shown in whole dollars and a smaller one keep
 Free-model requests are requests rather than money, so no rate reaches them.
 Each line drops its least useful segment rather than its own digits when the figures outgrow the card.
 
+### AWS session cost
+
+The `aws` card reports what this EC2 box has cost since it booted: hours since boot times its instance type's on-demand rate.
+
+```
+╭─ ● aws ──────────────────── t3.medium · imds ─╮
+│                                               │
+│   session  $0.32 AUD · 4h 15m up              │
+│   rate     $0.07 AUD/h · t3.medium            │
+│                                               │
+╰───────────────────────────────────────────────╯
+```
+
+It is session cost, not the invoice.
+It counts only on-demand compute, it counts nothing from before this boot, and starting the box resets it to zero - the point is what this session has cost so far, to make an overnight-left-on box visibly expensive rather than to reproduce the console's monthly total.
+It is not a quota window either: money already spent bounds nothing, so the card draws no bar and publishes no effective percentage.
+
+Both inputs are instance-local and free, so the figure costs nothing on every render.
+Uptime comes from `/proc/uptime`.
+The instance type comes from this box's own IMDSv2 endpoint at `169.254.169.254`, read with a token request and a metadata request under 2-second timeouts.
+No credential, no AWS SDK, and no Cost Explorer call is involved, and the link-local address deliberately never goes through a configured HTTP proxy.
+
+The hourly rate comes from a table of ap-southeast-2 on-demand prices for the t3 family, held in [src/providers/aws.ts](src/providers/aws.ts).
+There is no fallback query for a size the table does not price: the card reads `no-rate (<type>)` and the size is added to the table instead.
+A box the endpoint does not answer for reads `no-imds`, and a box whose uptime cannot be read reads `no-uptime` rather than a measured `$0.00`.
+
+The instance size cannot change while the box is up, so it is cached against the boot epoch at `$XDG_CACHE_HOME/quota-axi/aws-instance.json` (default `~/.cache/quota-axi/`), owner-readable only and written through a temporary file.
+A boot epoch more than 60 seconds from the cached one - a reboot, or a stopped resize - invalidates it; the slack absorbs `/proc/uptime`'s own jitter.
+A failed probe is cached the same way, so a box that is not an EC2 instance pays the timeout once per boot rather than on every render.
+Setting `QUOTA_AXI_AWS_IMDS` to `off` skips the probe and its cache write entirely.
+
+Money figures are converted with `fx.audPerUsd` and labeled `AUD`, exactly as the other figure lines are, and stay in USD with a `USD` label when no rate is configured.
+The rate line sheds its region before its own digits when the figures outgrow the card, because the title line already names the instance type the rate belongs to.
+
 ### Machine surfaces
 
 `--json` adds two optional fields to the Claude and Codex providers, with no renames and no re-nesting:
@@ -523,6 +557,25 @@ The OpenRouter provider gains an `openrouter` field in both `--json` tiers, carr
 
 The `*Usd` half is what the vendor answered and the `*Aud` half is what the configured rate makes of it, so a reading taken without a rate is visibly missing its AUD half rather than silently showing a converted figure.
 `--full` adds a matching `openrouter[]` TOON block.
+
+The AWS provider gains an `aws` field in both `--json` tiers, on the same terms:
+
+```json
+{
+  "aws": {
+    "instanceType": "t3.medium",
+    "region": "ap-southeast-2",
+    "ratePerHourUsd": 0.0528,
+    "uptimeHours": 4.2664,
+    "sessionUsd": 0.2253,
+    "sessionAud": 0.32,
+    "ratePerHourAud": 0.074
+  }
+}
+```
+
+`sessionAud` and `ratePerHourAud` are present only when a rate is configured, and the hourly rate keeps four decimals because a small instance costs less than a cent an hour.
+`--full` adds a matching `aws[]` TOON block.
 
 ## Multiple accounts
 
