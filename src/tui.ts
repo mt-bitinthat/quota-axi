@@ -705,8 +705,10 @@ function renewalLine(subscription: ProviderSubscription): Line {
 export function spendText(spend: ProviderSpend): string {
   const lead = `API-equiv ${spend.windowDays}d · `;
   if (spend.status === "pending") return `${lead}…`;
+  // No figure means no window to label, and the card is 49 columns wide: the
+  // remedy earns the room the window label would have taken.
   if (spend.status === "unavailable") {
-    return `${lead}unavailable (npm i -g ccusage)`;
+    return "API-equiv · unavailable (npm i -g ccusage)";
   }
   if (spend.aud !== undefined) return `${lead}${formatMoney(spend.aud)} AUD`;
   // Without a configured rate the figure stays in the currency ccusage priced

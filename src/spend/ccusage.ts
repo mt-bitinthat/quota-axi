@@ -1,5 +1,9 @@
-import { writeFileSync } from "node:fs";
-import { ccusageCacheFilePath, ensurePrivateParent, readJsonFile } from "../lib/fs.js";
+import { chmodSync, renameSync, writeFileSync } from "node:fs";
+import {
+  ccusageCacheFilePath,
+  ensurePrivateParent,
+  readJsonFile,
+} from "../lib/fs.js";
 import { execFileText, findCommandPath } from "../lib/process.js";
 
 /**
@@ -129,7 +133,13 @@ async function refresh(deps: SpendDeps): Promise<void> {
     state.reading = { buckets: bucketModelCosts(models), refreshedAt };
     state.unavailable = false;
     writeCcusageCache(
-      { version: CACHE_VERSION, refreshedAt, windowDays: SPEND_WINDOW_DAYS, since, models },
+      {
+        version: CACHE_VERSION,
+        refreshedAt,
+        windowDays: SPEND_WINDOW_DAYS,
+        since,
+        models,
+      },
       deps.cachePath,
     );
   } catch {
@@ -246,14 +256,22 @@ export function readCcusageCache(
   return { buckets: bucketModelCosts(costs), refreshedAt };
 }
 
+/**
+ * Write through a temporary file, as the quota cache does: a refresh that is
+ * still running when the process exits leaves no half-written summary behind,
+ * and an existing file's mode is replaced rather than inherited.
+ */
 function writeCcusageCache(file: SpendCacheFile, path?: string): void {
   const target = path ?? ccusageCacheFilePath();
+  const temp = `${target}.${process.pid}.tmp`;
   try {
     ensurePrivateParent(target);
-    writeFileSync(target, `${JSON.stringify(file, null, 2)}\n`, {
+    writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, {
       encoding: "utf8",
       mode: 0o600,
     });
+    chmodSync(temp, 0o600);
+    renameSync(temp, target);
   } catch {
     // A cache that cannot be written only costs the next run a respawn.
   }
