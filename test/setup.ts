@@ -29,3 +29,13 @@ process.env.COPILOT_HOME = join(
   tmpdir(),
   `quota-axi-test-no-copilot-config-${process.pid}-${randomUUID()}`,
 );
+
+// The box-dashboard fork reads an operator-supplied `box.json` and shells out to
+// ccusage. No suite may see this machine's real configuration, and no suite may
+// spawn a vendor CLI by accident, so both are pointed away by default. Tests
+// that exercise either supply their own path or injected runner.
+process.env.XDG_CONFIG_HOME = join(
+  tmpdir(),
+  `quota-axi-test-no-box-config-${process.pid}-${randomUUID()}`,
+);
+process.env.QUOTA_AXI_CCUSAGE = "off";

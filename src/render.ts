@@ -481,6 +481,8 @@ function auditBlocks(response: QuotaAxiResponse): string[] {
     encode({ scopeAudit }),
     encode({ accounts }),
     encode({ attempts }),
+    encode({ subscriptions: subscriptionRows(response) }),
+    encode({ apiSpend: apiSpendRows(response) }),
   ];
 }
 
@@ -659,6 +661,45 @@ function demotedSemantics(semantics: QuotaSemantics): QuotaSemantics {
       }),
     ),
   };
+}
+
+/**
+ * Box-dashboard fork: the local billing facts the cards show, as audit rows.
+ * Sparse - a provider with no configured subscription simply has no row, which
+ * is the same answer the card gives by omitting the line.
+ */
+function subscriptionRows(response: QuotaAxiResponse) {
+  return response.providers.flatMap((provider) =>
+    provider.subscription
+      ? [
+          {
+            ...providerColumns(provider),
+            renewsAt: provider.subscription.renewsAt,
+            amountAud: provider.subscription.amountAud,
+            daysUntil: provider.subscription.daysUntil,
+          },
+        ]
+      : [],
+  );
+}
+
+/** Sparse: `status` keeps a pending or unmeasurable figure out of the numbers. */
+function apiSpendRows(response: QuotaAxiResponse) {
+  return response.providers.flatMap((provider) =>
+    provider.spend
+      ? [
+          {
+            ...providerColumns(provider),
+            windowDays: provider.spend.windowDays,
+            status: provider.spend.status,
+            usd: provider.spend.usd ?? UNKNOWN,
+            aud: provider.spend.aud ?? UNKNOWN,
+            source: provider.spend.source,
+            refreshedAt: provider.spend.refreshedAt ?? NONE,
+          },
+        ]
+      : [],
+  );
 }
 
 function attemptRow(provider: ProviderQuota, attempt: SourceAttempt) {

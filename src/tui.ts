@@ -2,6 +2,8 @@ import type {
   EffectiveAvailability,
   ProviderId,
   ProviderQuota,
+  ProviderSpend,
+  ProviderSubscription,
   QuotaAxiResponse,
   QuotaWindow,
 } from "./types.js";
@@ -245,6 +247,8 @@ function buildLiveCard(provider: ProviderQuota, generatedAtMs: number): Card {
       );
     }
   }
+
+  lines.push(...boxCardLines(provider));
 
   for (const note of cardNotes(provider)) {
     lines.push(
@@ -638,6 +642,96 @@ function runwayVerdict(headline: EffectiveAvailability | undefined): Line {
       ? "exhaustion projected"
       : `empty in ${formatCountdown(seconds)}`;
   return [{ text, style: "warnBold" }];
+}
+
+/** Days of runway at which the renewal countdown stops being routine. */
+const RENEWAL_WARNING_DAYS = 3;
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * Box-dashboard fork: the two money lines under the window rows - what the
+ * subscription costs and when it renews, and what the same traffic would have
+ * cost at API list prices. Both are local facts about the operator's billing,
+ * not readings, so they sit below the quota block rather than inside it and
+ * neither is ever drawn as a bar.
+ */
+function boxCardLines(provider: ProviderQuota): Line[] {
+  const lines: Line[] = [];
+  if (provider.subscription) {
+    lines.push(interior(renewalLine(provider.subscription), "border"));
+  }
+  if (provider.spend) {
+    lines.push(
+      interior(
+        [
+          {
+            text: `   ${truncate(spendText(provider.spend), CARD_INTERIOR - 4)}`,
+            style: "dim",
+          },
+        ],
+        "border",
+      ),
+    );
+  }
+  return lines;
+}
+
+function renewalLine(subscription: ProviderSubscription): Line {
+  const { renewsAt, amountAud, daysUntil } = subscription;
+  const lead = `renews ${formatRenewalDate(renewsAt)} · ${formatMoney(amountAud)} AUD · `;
+  return [
+    { text: `   ${truncate(lead, CARD_INTERIOR - 4)}`, style: "dim" },
+    {
+      text: `${daysUntil}d`,
+      style: daysUntil <= RENEWAL_WARNING_DAYS ? "crit" : "dim",
+    },
+  ];
+}
+
+export function spendText(spend: ProviderSpend): string {
+  const lead = `API-equiv ${spend.windowDays}d · `;
+  if (spend.status === "pending") return `${lead}…`;
+  if (spend.status === "unavailable") {
+    return `${lead}unavailable (npm i -g ccusage)`;
+  }
+  if (spend.aud !== undefined) return `${lead}${formatMoney(spend.aud)} AUD`;
+  // Without a configured rate the figure stays in the currency ccusage priced
+  // it in rather than being converted at a guess.
+  if (spend.usd !== undefined) return `${lead}${formatMoney(spend.usd)} USD`;
+  return `${lead}…`;
+}
+
+/** "2026-10-05" reads as "5 Oct": the calendar day, never shifted by a zone. */
+export function formatRenewalDate(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+  const month = MONTH_NAMES[Number(match[2]) - 1];
+  if (month === undefined) return isoDate;
+  return `${Number(match[3])} ${month}`;
+}
+
+const MONEY_FORMAT = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
+
+/** Thousands separators, no cents: the card compares magnitudes, not invoices. */
+export function formatMoney(amount: number): string {
+  if (!Number.isFinite(amount)) return "?";
+  return `$${MONEY_FORMAT.format(Math.round(amount))}`;
 }
 
 function cardNotes(provider: ProviderQuota): string[] {

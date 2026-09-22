@@ -1,0 +1,10 @@
+{
+  "fx": {
+    "audPerUsd": 1.401,
+    "asOf": "2026-09-21"
+  },
+  "subscriptions": {
+    "claude": { "renewsDay": 5, "amountAud": 305 },
+    "codex": { "renewsDay": 5, "amountAud": 35 }
+  }
+}

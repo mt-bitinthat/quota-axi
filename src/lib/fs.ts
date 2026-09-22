@@ -54,6 +54,14 @@ export function cacheFilePath(): string {
 }
 
 /**
+ * Box-dashboard fork: the trailing-window ccusage summary, kept beside the
+ * quota cache so both honor the same XDG base.
+ */
+export function ccusageCacheFilePath(): string {
+  return join(cacheDirPath(), "ccusage-30d.json");
+}
+
+/**
  * An opaque, deterministic cache-provenance identifier for the Claude profile
  * selected by the current process. The selected path never leaves this helper.
  */

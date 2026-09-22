@@ -1,5 +1,6 @@
 import { AxiError } from "axi-sdk-js";
 import { annotateQuotaAdvice } from "./advice.js";
+import { annotateBoxLines, primeBoxSpend } from "./box/annotate.js";
 import { parseFlags, parseModelsFlags, type QuotaFlags } from "./args.js";
 import { writeCachedProviders } from "./cache.js";
 import { withQuotaSemantics } from "./interpretation.js";
@@ -56,7 +57,7 @@ export async function quotaCommand(
 
   if (flags.tui) return quotaTuiReport(flags, options);
 
-  const response = await loadQuota(flags.providers, options, false);
+  const response = await loadQuota(flags.providers, options, QUOTA_ONE_SHOT);
   return flags.json
     ? JSON.stringify(quotaJsonReport(response, flags.full), null, 2)
     : renderQuotaToon(
@@ -88,13 +89,13 @@ async function quotaTuiReport(
     });
 
   if (flags.once || !isInteractiveTerminal()) {
-    return frame(await loadQuota(flags.providers, options, false));
+    return frame(await loadQuota(flags.providers, options, QUOTA_TUI_ONCE));
   }
 
   const refreshSeconds = flags.refreshSeconds ?? DEFAULT_REFRESH_SECONDS;
   const hint = `Press q to quit · refreshing every ${formatInterval(refreshSeconds)}`;
   const last = await runLiveTui<QuotaAxiResponse>({
-    load: () => loadQuota(flags.providers, options, true),
+    load: () => loadQuota(flags.providers, options, QUOTA_TUI_LIVE),
     render: frame,
     status: (scroll) => renderTuiHintLine(scrollHint(scroll, hint), terminal()),
     intervalMillis: refreshSeconds * 1000,
@@ -134,23 +135,42 @@ function processLiveTuiIo(): LiveTuiIo {
 }
 
 /**
+ * How one report treats the two derived surfaces it does not fetch: whether it
+ * is a live frame (which re-evaluates the exit code each cycle) and whether it
+ * may wait for the ccusage window.
+ */
+type QuotaLoadMode = { live: boolean; awaitSpend: boolean };
+
+/** TOON and JSON render once, so they wait for the figure rather than omit it. */
+const QUOTA_ONE_SHOT: QuotaLoadMode = { live: false, awaitSpend: true };
+/** Every human frame paints on the providers' clock and fills the figure in later. */
+const QUOTA_TUI_ONCE: QuotaLoadMode = { live: false, awaitSpend: false };
+const QUOTA_TUI_LIVE: QuotaLoadMode = { live: true, awaitSpend: false };
+
+/**
  * Fetch, apply the all-failed exit code, and refresh the cache unless the read
  * is profile-only, which never touches cached quota. A live report re-evaluates
  * the exit code every cycle so quitting reflects the last frame.
+ *
+ * The box-dashboard lines are attached after the cache write, so a derived,
+ * machine-local figure can never be persisted as part of a provider snapshot.
  */
 async function loadQuota(
   providers: ProviderId[],
   options: ProviderOptions,
-  live: boolean,
+  mode: QuotaLoadMode,
 ): Promise<QuotaAxiResponse> {
+  // Started before the fetch so the subprocess overlaps the provider requests
+  // instead of extending them.
+  primeBoxSpend(providers);
   const response = await fetchQuota(providers, options);
   const allFailed = response.providers.every(isFailed);
   if (allFailed) process.exitCode = 1;
-  else if (live) process.exitCode = undefined;
+  else if (mode.live) process.exitCode = undefined;
   if (options.credentialMode !== "profile-only") {
     writeCachedProvidersBestEffort(response.providers);
   }
-  return response;
+  return annotateBoxLines(response, { awaitSpend: mode.awaitSpend });
 }
 
 export async function modelsCommand(

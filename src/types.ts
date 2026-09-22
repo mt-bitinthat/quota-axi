@@ -267,6 +267,40 @@ export type DegradedSource = {
   error?: string;
 };
 
+/**
+ * Box-dashboard fork: the operator-configured subscription this provider is
+ * billed under, resolved to its next renewal. It is local configuration
+ * rendered beside the reading, never anything the provider reported, and it is
+ * never cached.
+ */
+export type ProviderSubscription = {
+  /** ISO calendar date (YYYY-MM-DD) of the next renewal, in local time. */
+  renewsAt: string;
+  amountAud: number;
+  /** Whole days from today to `renewsAt`; `0` on the renewal day itself. */
+  daysUntil: number;
+};
+
+/**
+ * Box-dashboard fork: what this provider's traffic over the trailing window
+ * would have cost at published API list prices, as reported by ccusage.
+ *
+ * It is an equivalence, not a bill: nothing here was charged, and it is not a
+ * quota reading. `status` keeps "not measured yet" distinct from "measured
+ * zero", so a pending or unavailable figure can never read as no spend.
+ */
+export type ProviderSpend = {
+  windowDays: number;
+  status: "measured" | "pending" | "unavailable";
+  /** Present only when `status` is `measured`. */
+  usd?: number;
+  /** Present only when `status` is `measured` and box.json supplies a rate. */
+  aud?: number;
+  source: "ccusage";
+  /** When the underlying ccusage reading was taken. */
+  refreshedAt?: string;
+};
+
 export type ProviderAccount = {
   /** Opaque local lane identity, stable across refresh and discovery order. */
   accountKey: string;
@@ -292,6 +326,10 @@ export type ProviderQuota = {
   };
   windows: QuotaWindow[];
   quotaSemantics?: QuotaSemantics;
+  /** Box-dashboard fork: local subscription facts. Derived, never cached. */
+  subscription?: ProviderSubscription;
+  /** Box-dashboard fork: API-equivalent spend. Derived, never cached. */
+  spend?: ProviderSpend;
   credits?: {
     remaining?: number;
     unlimited?: boolean;

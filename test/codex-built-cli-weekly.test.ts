@@ -77,6 +77,9 @@ process.stdin.on("data", (chunk) => {
           HOME: home,
           XDG_CACHE_HOME: cacheHome,
           QUOTA_AXI_CODEX_BINARY: codex,
+          // This spawns the real CLI, and Codex owns a box-dashboard spend
+          // line: no suite may shell out to ccusage by accident.
+          QUOTA_AXI_CCUSAGE: "off",
           PATH: process.env.PATH ?? "",
         },
       });
