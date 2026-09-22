@@ -428,7 +428,7 @@ Without a configured rate the figure stays in the currency ccusage priced it in 
 
 **Timing.** The ccusage run takes about 3 seconds on a busy box, so it is never on the render path.
 It starts alongside the provider fetches, and its summary is cached for ten minutes at `$XDG_CACHE_HOME/quota-axi/ccusage-30d.json` (default `~/.cache/quota-axi/`), owner-readable only and written through a temporary file.
-The human report never waits for it: a frame with no figure yet reads `API-equiv 30d · …` and a later refresh fills it in.
+Every report waits for it: the wait is a few seconds on a cold or stale cache and nothing otherwise, and a frame only reads `API-equiv 30d · …` when the figure is still being computed after that wait.
 The TOON and JSON surfaces render once, so they do wait.
 
 ### Machine surfaces

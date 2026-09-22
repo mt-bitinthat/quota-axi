@@ -143,9 +143,14 @@ type QuotaLoadMode = { live: boolean; awaitSpend: boolean };
 
 /** TOON and JSON render once, so they wait for the figure rather than omit it. */
 const QUOTA_ONE_SHOT: QuotaLoadMode = { live: false, awaitSpend: true };
-/** Every human frame paints on the providers' clock and fills the figure in later. */
-const QUOTA_TUI_ONCE: QuotaLoadMode = { live: false, awaitSpend: false };
-const QUOTA_TUI_LIVE: QuotaLoadMode = { live: true, awaitSpend: false };
+/**
+ * TUI frames wait too. The live loop only repaints on its refresh interval
+ * (five minutes by default), so a frame painted before ccusage lands would show
+ * the pending mark until the next cycle; the wait is a few seconds at most and
+ * only on a cold or stale (ten-minute) cache.
+ */
+const QUOTA_TUI_ONCE: QuotaLoadMode = { live: false, awaitSpend: true };
+const QUOTA_TUI_LIVE: QuotaLoadMode = { live: true, awaitSpend: true };
 
 /**
  * Fetch, apply the all-failed exit code, and refresh the cache unless the read
