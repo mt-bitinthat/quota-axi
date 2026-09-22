@@ -37,6 +37,7 @@ const originalMimoProvider = PROVIDERS.mimo;
 const originalDeepSeekProvider = PROVIDERS.deepseek;
 const originalOpenRouterProvider = PROVIDERS.openrouter;
 const originalAwsProvider = PROVIDERS.aws;
+const originalElevenLabsProvider = PROVIDERS.elevenlabs;
 const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 const originalCodexHome = process.env.CODEX_HOME;
@@ -65,6 +66,7 @@ afterEach(() => {
   PROVIDERS.deepseek = originalDeepSeekProvider;
   PROVIDERS.openrouter = originalOpenRouterProvider;
   PROVIDERS.aws = originalAwsProvider;
+  PROVIDERS.elevenlabs = originalElevenLabsProvider;
   vi.unstubAllGlobals();
   if (originalXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
   else process.env.XDG_CACHE_HOME = originalXdgCacheHome;
@@ -151,8 +153,10 @@ describe("CLI flag parsing", () => {
         ],
         json: true,
         full: true,
+        explicitProviders: false,
         tui: false,
         once: false,
+        all: false,
         allowKeychainPrompt: true,
         allowClaudeInference: false,
         noCredentialRefresh: false,
@@ -182,6 +186,26 @@ describe("CLI flag parsing", () => {
         "--refresh must be between 30s and 24h",
       );
     }
+  });
+
+  it("parses --all for the human report and notes an explicit provider scope", () => {
+    expect(parseFlags(["--tui", "--all"]).all).toBe(true);
+    expect(parseFlags(["--tui"]).all).toBe(false);
+    expect(parseFlags(["--provider", "zai"]).explicitProviders).toBe(true);
+    expect(parseFlags(["--provider=zai,codex"]).explicitProviders).toBe(true);
+    expect(parseFlags([]).explicitProviders).toBe(false);
+  });
+
+  it("rejects --all without --tui", async () => {
+    expect(() => parseFlags(["--all"])).toThrow(
+      "--all is only supported with --tui",
+    );
+    expect(() => parseModelsFlags(["--all"])).toThrow(
+      "--all is only supported with --tui",
+    );
+    await expect(
+      authCommand(["--all"], { binPath: "quota-axi" }),
+    ).rejects.toThrow("--all is only supported with --tui");
   });
 
   it("rejects live-only flags without --tui", () => {
@@ -1268,6 +1292,205 @@ describe("CLI quota rendering", () => {
   });
 });
 
+describe("human report folding for providers that are not set up", () => {
+  /**
+   * One live provider, one whose credential is present behind a prompt, a
+   * Copilot whose only credential is a keyring-stored GitHub CLI login, and
+   * every other provider with nothing set up at all. Antigravity, Alibaba, and
+   * Command Code carry the attempts their real adapters record when nothing is
+   * installed or configured, each wording absence its own way.
+   */
+  function stubFoldFleet(): void {
+    useTempCache();
+    for (const id of Object.keys(PROVIDERS) as ProviderQuota["provider"][]) {
+      PROVIDERS[id] = providerWithQuota(notSetUpQuota(id));
+    }
+    PROVIDERS.codex = providerWithQuota(freshCodexQuota());
+    PROVIDERS.claude = providerWithQuota({
+      ...notSetUpQuota("claude"),
+      attempts: [
+        {
+          source: "oauth-file",
+          status: "skipped",
+          error: "credentials_missing",
+        },
+        {
+          source: "keychain",
+          status: "skipped",
+          error: "keychain_prompt_required",
+          credentialPresent: true,
+        },
+      ],
+    });
+    PROVIDERS.copilot = {
+      ...providerWithQuota({
+        ...notSetUpQuota("copilot"),
+        attempts: [
+          {
+            source: "apps-json",
+            status: "skipped",
+            error: "credentials_missing",
+          },
+          {
+            source: "gh:hosts.yml",
+            status: "skipped",
+            error: "credentials_keyring_storage",
+            credentialPresent: true,
+          },
+        ],
+      }),
+      incidentalSources: ["gh:hosts.yml"],
+    };
+    PROVIDERS.agy = providerWithQuota({
+      ...notSetUpQuota("agy"),
+      state: {
+        status: "unavailable",
+        stale: false,
+        error: "Antigravity/agy is not running",
+      },
+      attempts: [
+        {
+          source: "cli",
+          status: "skipped",
+          error: "agy CLI is not installed",
+          degraded: false,
+        },
+        {
+          source: "loopback",
+          status: "skipped",
+          error: "Antigravity/agy is not running",
+          degraded: false,
+        },
+      ],
+    });
+    PROVIDERS.alibaba = providerWithQuota({
+      ...notSetUpQuota("alibaba"),
+      state: {
+        status: "unavailable",
+        stale: false,
+        error: "bl_cli_unavailable",
+      },
+      attempts: [
+        { source: "bl-cli", status: "skipped", error: "bl_cli_unavailable" },
+      ],
+    });
+    PROVIDERS.commandcode = providerWithQuota({
+      ...notSetUpQuota("commandcode"),
+      attempts: [
+        "pi:commandcode",
+        "env:COMMAND_CODE_API_KEY",
+        "env:COMMANDCODE_API_KEY",
+        "commandcode-cli",
+        "omp:commandcode",
+      ].map((source) => ({
+        source,
+        status: "skipped",
+        error: "commandcode_sign_in_required",
+      })),
+    });
+  }
+
+  it("folds them into one footer line, reading each adapter's incidental sources", async () => {
+    stubFoldFleet();
+    const output = await capture(["--tui", "--once"]);
+
+    expect(output.trimEnd().split("\n").slice(-3)).toEqual([
+      "  ○ not set up  cursor · copilot · grok · kimi · zai · agy · alibaba · opencode-go · commandcode",
+      "                minimax · mimo · deepseek · openrouter · elevenlabs",
+      "                quota-axi auth shows where each is read",
+    ]);
+    expect(output).not.toMatch(/╭─ ○ (agy|alibaba|commandcode) /);
+
+    expect(output).toMatch(/· 1 live · 1 needs attention · 14 not set up\n/);
+    expect(output).toContain("╭─ ● codex ");
+    expect(output).toContain("╭─ ○ claude ");
+    expect(output).toContain("  ○ not set up  cursor · copilot · grok · kimi");
+    expect(output).toContain("quota-axi auth shows where each is read");
+    expect(output).not.toMatch(/╭─ ○ (copilot|zai|elevenlabs) /);
+  });
+
+  it("draws every provider as a card with --all", async () => {
+    stubFoldFleet();
+    const output = await capture(["--tui", "--once", "--all"]);
+
+    expect(output).toContain("  ○ not set up · 14\n");
+    expect(output).toContain("╭─ ○ copilot ");
+    expect(output).toContain("╭─ ○ elevenlabs ");
+    expect(output).not.toContain("quota-axi auth shows where each is read");
+  });
+
+  it("never folds a provider named with --provider", async () => {
+    stubFoldFleet();
+    const output = await capture([
+      "--tui",
+      "--once",
+      "--provider",
+      "zai,codex",
+    ]);
+
+    expect(output).toMatch(/· 1 live · 0 need attention · 1 not set up\n/);
+    expect(output).toContain("╭─ ○ zai ");
+    expect(output).not.toContain("quota-axi auth shows where each is read");
+  });
+
+  it("expands and folds them with a in the live report", async () => {
+    stubFoldFleet();
+    const stdout = process.stdout as unknown as Record<string, unknown>;
+    const stdin = process.stdin as unknown as Record<string, unknown>;
+    const saved = {
+      stdoutTty: stdout.isTTY,
+      stdinTty: stdin.isTTY,
+      setRawMode: stdin.setRawMode,
+      rows: stdout.rows,
+      columns: stdout.columns,
+    };
+    const painted: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      painted.push(String(chunk));
+      return true;
+    });
+    vi.spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
+    vi.spyOn(process.stdin, "pause").mockImplementation(() => process.stdin);
+    stdout.isTTY = true;
+    stdin.isTTY = true;
+    stdin.setRawMode = () => process.stdin;
+    stdout.rows = 80;
+    stdout.columns = 100;
+    const plain = (text: string): string =>
+      // eslint-disable-next-line no-control-regex
+      text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    const lastFrame = (): string => plain(painted.at(-1) ?? "");
+    const settle = async (needle: string): Promise<void> => {
+      for (let tries = 0; tries < 200; tries++) {
+        if (lastFrame().includes(needle)) return;
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      throw new Error(`no frame containing ${needle}`);
+    };
+    try {
+      const run = capture(["--tui"]);
+      await settle("Press q to quit · a show not set up · refreshing every 5m");
+      expect(lastFrame()).not.toContain("╭─ ○ zai ");
+
+      process.stdin.emit("data", Buffer.from("a"));
+      await settle("a hide not set up");
+      expect(lastFrame()).toContain("  ○ not set up · 14");
+      expect(lastFrame()).toContain("╭─ ○ zai ");
+
+      process.stdin.emit("data", Buffer.from("q"));
+      // The final frame echoed on quit keeps the operator's choice.
+      expect(plain(await run)).toContain("╭─ ○ zai ");
+    } finally {
+      stdout.isTTY = saved.stdoutTty;
+      stdin.isTTY = saved.stdinTty;
+      stdin.setRawMode = saved.setRawMode;
+      stdout.rows = saved.rows;
+      stdout.columns = saved.columns;
+      vi.restoreAllMocks();
+    }
+  });
+});
+
 describe("new provider public quota output", () => {
   it("renders registered MiniMax model scopes through the JSON CLI", async () => {
     useTempCache();
@@ -2292,6 +2515,28 @@ function providerWithAccounts(
         },
       }));
     },
+  };
+}
+
+function notSetUpQuota(provider: ProviderQuota["provider"]): ProviderQuota {
+  return {
+    provider,
+    label: provider,
+    source: "unavailable",
+    windows: [],
+    state: {
+      status: "auth_required",
+      stale: false,
+      error: `${provider}_credential_unavailable`,
+      sourcesTried: [`env:${provider}`],
+    },
+    attempts: [
+      {
+        source: `env:${provider}`,
+        status: "skipped",
+        error: "credentials_missing",
+      },
+    ],
   };
 }
 

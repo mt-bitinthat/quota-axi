@@ -2,8 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { degradedSources } from "../../src/lib/source-attempts.js";
 import {
+  degradedSources,
+  providerPresence,
+} from "../../src/lib/source-attempts.js";
+import {
+  copilotAdapter,
   fetchQuota,
   inspectAuth,
   normalizeCopilotUser,
@@ -651,5 +655,141 @@ describe("GitHub Copilot credential sources", () => {
       },
     ]);
     expect(JSON.stringify(result)).not.toContain("gho_cli_fixture");
+  });
+
+  describe("presence in the human report", () => {
+    const presence = (result: Awaited<ReturnType<typeof fetchQuota>>) =>
+      providerPresence(result, copilotAdapter);
+
+    it("folds a GitHub CLI login that shows no Copilot access", async () => {
+      // A keyring login and an unparseable store describe gh, not Copilot, and
+      // a token Copilot refuses is a definitive answer: a gh-only user folds.
+      writeGhHosts(
+        "github.com:\n    users:\n        fixture-user:\n    user: fixture-user\n",
+      );
+      stubUserEndpoint({});
+      const keyring = await fetchQuota(options);
+      expect(keyring.attempts?.[2]).toMatchObject({
+        error: "credentials_keyring_storage",
+        credentialPresent: true,
+      });
+      expect(presence(keyring)).toBe("absent");
+
+      writeGhHosts("github.com:\n\toauth_token: gho_cli_fixture\n");
+      expect(presence(await fetchQuota(options))).toBe("absent");
+
+      writeGhToken("gho_revoked_fixture");
+      const api = stubUserEndpoint({ gho_revoked_fixture: 403 });
+      const rejected = await fetchQuota(options);
+      expect(api.bearers).toEqual(["Bearer gho_revoked_fixture"]);
+      expect(rejected.attempts?.[2]).toMatchObject({
+        status: "failed",
+      });
+      expect(presence(rejected)).toBe("absent");
+    });
+
+    it("keeps Copilot in view when its CLI configuration cannot be confirmed as absent", async () => {
+      const originalCopilotHome = process.env.COPILOT_HOME;
+      process.env.COPILOT_HOME = join(tempDir!, "copilot");
+      const config = join(process.env.COPILOT_HOME, "config.json");
+      stubUserEndpoint({});
+      try {
+        // A Copilot CLI configuration that selects no account it can confirm.
+        writeJson(config, { lastLoggedInUser: null });
+        const unconfirmed = await fetchQuota(options);
+        expect(unconfirmed.attempts?.[1]).toMatchObject({
+          source: "copilot-cli:keychain",
+          status: "skipped",
+          error: "selected_account_unconfirmed",
+          degraded: false,
+        });
+        expect(presence(unconfirmed)).toBe("attention");
+
+        // A signed-in Copilot CLI on a platform with no supported secure store.
+        writeJson(config, {
+          lastLoggedInUser: { host: "https://github.com", login: "octocat" },
+        });
+        const unsupported = await withPlatform("linux", () =>
+          fetchQuota(options),
+        );
+        expect(unsupported.attempts?.[1]).toMatchObject({
+          error: "secure_store_unsupported",
+          degraded: false,
+        });
+        expect(presence(unsupported)).toBe("attention");
+
+        // Without a configuration the source is plainly absent.
+        rmSync(config);
+        expect(presence(await fetchQuota(options))).toBe("absent");
+      } finally {
+        if (originalCopilotHome === undefined) delete process.env.COPILOT_HOME;
+        else process.env.COPILOT_HOME = originalCopilotHome;
+      }
+    });
+
+    it("keeps a Copilot CLI account awaiting Keychain consent in view", async () => {
+      const originalCopilotHome = process.env.COPILOT_HOME;
+      delete process.env.COPILOT_HOME;
+      process.env.HOME = join(tempDir!, "home");
+      stubUserEndpoint({});
+      try {
+        // apps.json and gh are absent; the native CLI is signed in but its
+        // secure-store value still waits on --allow-keychain-prompt.
+        writeJson(join(process.env.HOME, ".copilot", "config.json"), {
+          lastLoggedInUser: { host: "https://github.com", login: "octocat" },
+        });
+        const gated = await withPlatform("win32", () => fetchQuota(options));
+
+        expect(gated.attempts?.[1]).toMatchObject({
+          source: "copilot-cli:keychain",
+          status: "skipped",
+          error: "keychain_prompt_required",
+          degraded: false,
+        });
+        expect(gated.attempts?.[1].credentialPresent).toBeUndefined();
+        expect(presence(gated)).toBe("attention");
+      } finally {
+        if (originalCopilotHome !== undefined)
+          process.env.COPILOT_HOME = originalCopilotHome;
+      }
+    });
+
+    it.each([
+      ["a server failure", 500, "error"],
+      ["a rate limit", 429, "rate_limited"],
+    ])(
+      "keeps Copilot in view after %s on a GitHub CLI credential",
+      async (_label, status, providerStatus) => {
+        writeGhToken("gho_cli_fixture");
+        stubUserEndpoint({ gho_cli_fixture: status });
+
+        const result = await fetchQuota(options);
+
+        expect(result.state.status).toBe(providerStatus);
+        expect(result.attempts?.[2]).toMatchObject({
+          source: "gh:hosts.yml",
+          status: "failed",
+        });
+        expect(result.attempts?.[2]?.degraded).toBeUndefined();
+        expect(presence(result)).toBe("attention");
+      },
+    );
+
+    it("keeps Copilot in view when its own store holds a credential", async () => {
+      writeAppsJson({ "github.com": { oauth_token: "stale-apps-token" } });
+      writeGhHosts(
+        "github.com:\n    users:\n        fixture-user:\n    user: fixture-user\n",
+      );
+      stubUserEndpoint({ "stale-apps-token": 401 });
+
+      expect(presence(await fetchQuota(options))).toBe("attention");
+    });
+
+    it("counts a Copilot reading through the GitHub CLI login as live", async () => {
+      writeGhToken("gho_cli_fixture");
+      stubUserEndpoint({ gho_cli_fixture: 200 });
+
+      expect(presence(await fetchQuota(options))).toBe("live");
+    });
   });
 });

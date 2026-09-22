@@ -1,3 +1,7 @@
+import {
+  providerPresence,
+  type ProviderPresence,
+} from "./lib/source-attempts.js";
 import type {
   EffectiveAvailability,
   OpenRouterCredits,
@@ -17,7 +21,9 @@ import type {
  * Human terminal report ("Direction D'"): a two-up card grid with thin
  * headroom bars and a linear-pace marker wherever pace is known. This surface is
  * presentation only - it renders the same redacted response the TOON and JSON
- * surfaces receive and derives nothing new from providers or the cache.
+ * surfaces receive, grouped by the caller's presence classification, and
+ * derives nothing new from providers or the cache. Providers with nothing set
+ * up fold into one footer line unless the caller asks to draw them in full.
  */
 
 export type TuiColorDepth = "none" | "16" | "256" | "truecolor";
@@ -30,6 +36,18 @@ export type TuiOptions = {
   full?: boolean;
   /** IANA time zone for header/absolute times; defaults to the system zone. */
   timeZone?: string;
+  /**
+   * Each provider's presence, aligned with `response.providers`. The caller
+   * derives it from the unredacted source attempts, which a redacted response
+   * no longer carries. Left out, each provider is classified from what it
+   * still holds, so a provider without attempts never folds.
+   */
+  presence?: readonly ProviderPresence[];
+  /**
+   * Draw providers that are not set up as full cards instead of folding them
+   * into one footer line (`a` in the live report, `--all`, or `--provider`).
+   */
+  showNotSetUp?: boolean;
 };
 
 const CARD_WIDTH = 49;
@@ -144,19 +162,48 @@ export function renderQuotaTui(
   const generatedAtMs = Date.parse(response.generatedAt);
   const timeZone = options.timeZone;
 
-  const ordered = [
-    ...response.providers.filter(isLive),
-    ...response.providers.filter((provider) => !isLive(provider)),
-  ];
-  const cards = ordered.map((provider) => buildCard(provider, generatedAtMs));
+  const tiers: Record<ProviderPresence, ProviderQuota[]> = {
+    live: [],
+    attention: [],
+    absent: [],
+  };
+  response.providers.forEach((provider, index) => {
+    tiers[options.presence?.[index] ?? providerPresence(provider)].push(
+      provider,
+    );
+  });
+  const { live, attention, absent } = tiers;
+  const carded = [...live, ...attention];
+  const card = (provider: ProviderQuota): Card =>
+    buildCard(provider, generatedAtMs);
 
   const lines: Line[] = [];
-  lines.push([{ text: `  ${headerText(response, timeZone)}`, style: "dim" }]);
+  lines.push([
+    {
+      text: `  ${headerText(response, tiers, columns - 2, timeZone)}`,
+      style: "dim",
+    },
+  ]);
   lines.push([]);
-  lines.push(...layoutCards(cards, twoColumn));
+  if (carded.length > 0) {
+    lines.push(...layoutCards(carded.map(card), twoColumn));
+  }
+  if (absent.length > 0) {
+    if (lines.length > 2) lines.push([]);
+    if (options.showNotSetUp) {
+      lines.push([
+        { text: "  ○ not set up", style: "dimBold" },
+        { text: ` · ${absent.length}`, style: "dim" },
+      ]);
+      lines.push([]);
+      lines.push(...layoutCards(absent.map(card), twoColumn));
+    } else {
+      lines.push(...notSetUpFooter(absent, columns));
+    }
+  }
   if (options.full) {
     lines.push([]);
-    for (const provider of ordered) {
+    for (const provider of [...carded, ...absent]) {
       for (const footerLine of fullFooterLines(provider, columns - 2)) {
         lines.push([{ text: `  ${footerLine}`, style: "dim" }]);
       }
@@ -165,6 +212,61 @@ export function renderQuotaTui(
   return lines
     .map((line) => renderLine(trimRight(line), options.colorDepth ?? "none"))
     .join("\n");
+}
+
+/**
+ * Providers with nothing set up, folded into one dim line of names wrapped
+ * under a hanging indent, ending with where to look next. Every supported
+ * provider stays named, and the line grows by names, not by cards. A name too
+ * long for a line of its own - an account key on a narrow terminal - is
+ * truncated rather than allowed to run past the terminal, and a line is only
+ * wrapped once it carries a name, so the label never stands alone.
+ */
+function notSetUpFooter(absent: ProviderQuota[], columns: number): Line[] {
+  const label = "○ not set up  ";
+  const indent = 2 + displayWidth(label);
+  const width = columns - 2;
+  const lines: Line[] = [];
+  let current: Line = [{ text: "  " }, { text: label, style: "dimBold" }];
+  let used = indent;
+  const wrap = (): void => {
+    lines.push(current);
+    current = [{ text: " ".repeat(indent) }];
+    used = indent;
+  };
+  const append = (text: string, style: StyleName): void => {
+    const fitted = truncate(text, width - used);
+    if (!fitted) return;
+    current.push({ text: fitted, style });
+    used += displayWidth(fitted);
+  };
+  absent.forEach((provider, index) => {
+    const accountKey = configuredAccountKey(provider);
+    const name = accountKey
+      ? `${provider.provider}/${accountKey}`
+      : provider.provider;
+    const separator = index === 0 ? "" : " · ";
+    if (
+      used > indent &&
+      used + displayWidth(separator) + displayWidth(name) > width
+    ) {
+      wrap();
+    } else if (separator) {
+      current.push({ text: separator, style: "dimmer" });
+      used += displayWidth(separator);
+    }
+    append(name, "dim");
+  });
+  const pointer = "quota-axi auth shows where each is read";
+  if (used + 3 + displayWidth(pointer) > width) {
+    if (used > indent) wrap();
+  } else {
+    current.push({ text: "   " });
+    used += 3;
+  }
+  append(pointer, "dimmer");
+  lines.push(current);
+  return lines;
 }
 
 /**
@@ -193,20 +295,30 @@ function isLive(provider: ProviderQuota): boolean {
   return provider.state.status === "fresh" || provider.state.status === "stale";
 }
 
-function headerText(response: QuotaAxiResponse, timeZone?: string): string {
-  const live = response.providers.filter(isLive).length;
-  const signedOut = response.providers.filter(
-    (provider) => provider.state.status === "auth_required",
-  ).length;
-  const failed = response.providers.length - live - signedOut;
-  const parts = [
-    "quota-axi",
-    formatHeaderTime(response.generatedAt, timeZone),
-    `${live} live`,
-    `${signedOut} signed out`,
+/**
+ * The fleet summary, never wider than the report. Every tier count is
+ * required reading, so a header that does not fit gives up the timestamp -
+ * its time zone, then its date, then the clock - rather than a count.
+ */
+function headerText(
+  response: QuotaAxiResponse,
+  tiers: Record<ProviderPresence, ProviderQuota[]>,
+  width: number,
+  timeZone?: string,
+): string {
+  const attention = tiers.attention.length;
+  const counts = [
+    `${tiers.live.length} live`,
+    `${attention} ${attention === 1 ? "needs" : "need"} attention`,
+    `${tiers.absent.length} not set up`,
   ];
-  if (failed > 0) parts.push(`${failed} unavailable`);
-  return parts.filter(Boolean).join(" · ");
+  const candidates = headerTimes(response.generatedAt, timeZone).map((time) =>
+    ["quota-axi", ...(time ? [time] : []), ...counts].join(" · "),
+  );
+  return (
+    candidates.find((line) => displayWidth(line) <= width) ??
+    candidates[candidates.length - 1]
+  );
 }
 
 type Card = Line[];
@@ -1137,9 +1249,9 @@ export function formatCountdown(seconds: number): string {
   return minutes > 0 ? `${minutes}m` : "<1m";
 }
 
-function formatHeaderTime(iso: string, timeZone?: string): string {
+function headerTimes(iso: string, timeZone?: string): string[] {
   const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return iso;
+  if (!Number.isFinite(ms)) return [iso, ""];
   const parts = new Intl.DateTimeFormat("en-US", {
     ...(timeZone ? { timeZone } : {}),
     year: "numeric",
@@ -1153,7 +1265,14 @@ function formatHeaderTime(iso: string, timeZone?: string): string {
   const get = (type: string): string =>
     parts.find((part) => part.type === type)?.value ?? "";
   const hour = get("hour") === "24" ? "00" : get("hour");
-  return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")} ${get("timeZoneName")}`.trim();
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  const clock = `${hour}:${get("minute")}`;
+  return [
+    `${date} ${clock} ${get("timeZoneName")}`.trim(),
+    `${date} ${clock}`,
+    clock,
+    "",
+  ];
 }
 
 function fullFooterLines(provider: ProviderQuota, width: number): string[] {
