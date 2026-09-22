@@ -40,6 +40,15 @@ process.env.XDG_CONFIG_HOME = join(
 );
 process.env.QUOTA_AXI_CCUSAGE = "off";
 
+// The jev card counts a ledger under the XDG cache base, and the quota cache
+// lives there too. No suite may read - or be decided by - this machine's own
+// cached state, so the base is pointed at a path that never exists. Tests that
+// exercise either supply their own directory.
+process.env.XDG_CACHE_HOME = join(
+  tmpdir(),
+  `quota-axi-test-no-cache-home-${process.pid}-${randomUUID()}`,
+);
+
 // The aws card probes this box's own IMDSv2 endpoint. No suite may depend on
 // whether the machine running it is an EC2 instance, so the probe is off by
 // default and the tests that exercise it inject their own responder.

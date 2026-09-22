@@ -111,6 +111,25 @@ export function lastRenewal(
 }
 
 /**
+ * The calendar month a reading is inside: the first of this month through
+ * today.
+ *
+ * It is the fallback for a card whose provider has no `box.json` subscription
+ * entry and so no billing day to anchor a cycle to. A calendar month is the
+ * period an unbilled usage count is most often read against, and unlike a
+ * rolling window it restarts on a date the operator can name.
+ */
+export function calendarMonthCycle(now: Date): SpendCycle {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+  return {
+    since: isoDate({ year, month, day: 1 }),
+    windowDays: today,
+  };
+}
+
+/**
  * The rolling window a provider with no configured subscription falls back to,
  * so a card without a billing cycle still shows a figure. Counted inclusively,
  * as the cycle window is: a 30-day window ending today starts 29 days back.

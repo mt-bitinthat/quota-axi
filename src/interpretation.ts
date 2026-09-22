@@ -190,6 +190,14 @@ function semanticsFor(
         provider.windows,
         "AWS reports what this box has cost since it booted, not a quota window. quota-axi exposes the session figure and infers no remaining allowance from it.",
       );
+    case "jev":
+      // Box-dashboard fork: the ledger counts calls already made. TypeSafe
+      // publishes no allowance behind them, so there is no scope to publish an
+      // effective percentage for.
+      return unknownSemantics(
+        provider.windows,
+        "Jev reports what this box has asked it for, counted from the local call ledger, not a quota window. quota-axi exposes those counts and infers no remaining allowance from them.",
+      );
   }
 }
 

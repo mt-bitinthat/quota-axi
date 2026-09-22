@@ -8,6 +8,7 @@ import { copilotAdapter } from "./copilot.js";
 import { cursorAdapter } from "./cursor.js";
 import { elevenLabsAdapter } from "./elevenlabs.js";
 import { grokAdapter } from "./grok.js";
+import { jevAdapter } from "./jev.js";
 import { kimiAdapter } from "./kimi.js";
 import { opencodeGoAdapter } from "./opencode-go.js";
 import { minimaxAdapter } from "./minimax.js";
@@ -39,6 +40,7 @@ export const PROVIDERS: Record<ProviderId, ProviderAdapter> = {
   openrouter: openrouterAdapter,
   elevenlabs: elevenLabsAdapter,
   aws: awsAdapter,
+  jev: jevAdapter,
 };
 
 export function parseProviders(value: string | undefined): ProviderId[] {

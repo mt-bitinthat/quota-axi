@@ -105,6 +105,53 @@ describe("readBoxConfig", () => {
     });
   });
 
+  it("reads the Jev token rate", () => {
+    const path = writeConfig(
+      JSON.stringify({
+        fx: { audPerUsd: 1.401 },
+        subscriptions: {},
+        jev: { usdPerMTok: 3.5 },
+      }),
+    );
+    expect(readBoxConfig(path)).toEqual({
+      fx: { audPerUsd: 1.401 },
+      subscriptions: {},
+      jev: { usdPerMTok: 3.5 },
+    });
+  });
+
+  it("keeps a config whose only usable entry is the Jev rate", () => {
+    const path = writeConfig(JSON.stringify({ jev: { usdPerMTok: 0.75 } }));
+    expect(readBoxConfig(path)).toEqual({
+      subscriptions: {},
+      jev: { usdPerMTok: 0.75 },
+    });
+  });
+
+  it("drops a Jev rate that is not a positive number", () => {
+    for (const usdPerMTok of [0, -1, "3.5", null, Number.NaN]) {
+      const path = writeConfig(
+        JSON.stringify({
+          subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+          jev: { usdPerMTok },
+        }),
+      );
+      expect(readBoxConfig(path)).toEqual({
+        subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+      });
+    }
+  });
+
+  it("drops a Jev block that is not an object", () => {
+    const path = writeConfig(
+      JSON.stringify({ fx: { audPerUsd: 1.5 }, jev: 3.5 }),
+    );
+    expect(readBoxConfig(path)).toEqual({
+      fx: { audPerUsd: 1.5 },
+      subscriptions: {},
+    });
+  });
+
   it("locates box.json under the XDG config base", () => {
     const previous = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = directory;

@@ -26,12 +26,26 @@ export type BoxSubscriptionEntry = {
   amountAud: number;
 };
 
+/**
+ * Box-dashboard fork: how the Jev card prices the tokens it counts.
+ *
+ * TypeSafe publishes no rate card, so this is one operator-supplied number
+ * rather than a per-model table: USD per million tokens, applied to input and
+ * output alike. Without it the card counts calls and tokens and shows no money
+ * at all, which is a truer answer than a rate nobody published.
+ */
+export type BoxJev = {
+  /** USD per 1,000,000 tokens. */
+  usdPerMTok: number;
+};
+
 export type BoxConfig = {
   fx?: BoxFx;
   /** Days before renewal at which the countdown turns red; default 3. */
   warnDays?: number;
   /** Keyed by provider id; unknown keys are kept and simply never matched. */
   subscriptions: Record<string, BoxSubscriptionEntry>;
+  jev?: BoxJev;
 };
 
 export const DEFAULT_WARN_DAYS = 3;
@@ -53,13 +67,19 @@ export function readBoxConfig(path = boxConfigPath()): BoxConfig | undefined {
   const fx = parseFx(value.fx);
   const warnDays = parseWarnDays(value.warnDays);
   const subscriptions = parseSubscriptions(value.subscriptions);
-  if (fx === undefined && Object.keys(subscriptions).length === 0) {
+  const jev = parseJev(value.jev);
+  if (
+    fx === undefined &&
+    jev === undefined &&
+    Object.keys(subscriptions).length === 0
+  ) {
     return undefined;
   }
   return {
     ...(fx ? { fx } : {}),
     ...(warnDays === undefined ? {} : { warnDays }),
     subscriptions,
+    ...(jev ? { jev } : {}),
   };
 }
 
@@ -69,6 +89,18 @@ function parseFx(value: unknown): BoxFx | undefined {
   if (audPerUsd === undefined) return undefined;
   const asOf = typeof value.asOf === "string" ? value.asOf.trim() : "";
   return { audPerUsd, ...(asOf === "" ? {} : { asOf }) };
+}
+
+/**
+ * The Jev rate, or nothing. A rate of zero, a negative rate, and a rate that is
+ * not a number are all the same answer as an absent one: the card shows token
+ * counts and no money, rather than pricing every call at nothing.
+ */
+function parseJev(value: unknown): BoxJev | undefined {
+  if (!isRecord(value)) return undefined;
+  const usdPerMTok = positiveNumber(value.usdPerMTok);
+  if (usdPerMTok === undefined) return undefined;
+  return { usdPerMTok };
 }
 
 /** A whole number of days, zero or more; anything else falls back to the default. */

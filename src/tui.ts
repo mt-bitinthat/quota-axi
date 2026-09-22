@@ -91,6 +91,7 @@ const ACCENTS: Record<ProviderId, StyleSpec> = {
   openrouter: { rgb: [183, 148, 232], ansi16: "95", bold: true },
   elevenlabs: { rgb: [214, 170, 255], ansi16: "95", bold: true },
   aws: { rgb: [255, 169, 77], ansi16: "93", bold: true },
+  jev: { rgb: [166, 227, 161], ansi16: "92", bold: true },
 };
 
 const STYLES: Record<Exclude<StyleName, `accent:${ProviderId}`>, StyleSpec> = {

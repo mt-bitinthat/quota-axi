@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calendarMonthCycle,
   lastRenewal,
   nextRenewal,
   rollingCycle,
@@ -208,6 +209,29 @@ describe("rollingCycle", () => {
     expect(rollingCycle(local(2026, 1, 1), 30)).toEqual({
       since: "2025-12-03",
       windowDays: 30,
+    });
+  });
+});
+
+describe("calendarMonthCycle", () => {
+  it("opens on the first of this month and counts through today", () => {
+    expect(calendarMonthCycle(local(2026, 9, 22))).toEqual({
+      since: "2026-09-01",
+      windowDays: 22,
+    });
+  });
+
+  it("counts the first of the month as a one-day window", () => {
+    expect(calendarMonthCycle(local(2026, 9, 1))).toEqual({
+      since: "2026-09-01",
+      windowDays: 1,
+    });
+  });
+
+  it("restarts on the first of a new year", () => {
+    expect(calendarMonthCycle(local(2027, 1, 3))).toEqual({
+      since: "2027-01-01",
+      windowDays: 3,
     });
   });
 });

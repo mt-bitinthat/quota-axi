@@ -15,7 +15,8 @@ export type ProviderId =
   | "deepseek"
   | "openrouter"
   | "elevenlabs"
-  | "aws";
+  | "aws"
+  | "jev";
 
 export const PROVIDER_IDS = [
   "claude",
@@ -35,6 +36,7 @@ export const PROVIDER_IDS = [
   "openrouter",
   "elevenlabs",
   "aws",
+  "jev",
 ] as const satisfies readonly ProviderId[];
 
 export type ProviderSource =
@@ -47,6 +49,8 @@ export type ProviderSource =
   | "web"
   /** Box-dashboard fork: this instance's own EC2 metadata endpoint. */
   | "imds"
+  /** Box-dashboard fork: the local append-only Jev call ledger. */
+  | "ledger"
   | "cache"
   | "unavailable";
 
@@ -385,6 +389,51 @@ export type ProviderAws = {
   ratePerHourAud?: number;
 };
 
+/**
+ * Box-dashboard fork: one aggregation window over the local Jev call ledger.
+ *
+ * `tokens` is `inputTokens + outputTokens`, the figure the optional rate is
+ * applied to. `usd` is present only when `box.json` supplies `jev.usdPerMTok`,
+ * and `aud` only when it supplies an FX rate as well, so a reading taken
+ * without either is visibly missing that half rather than showing a guess.
+ */
+export type JevUsage = {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** `inputTokens + outputTokens`. */
+  tokens: number;
+  /** Present only when `box.json` supplies `jev.usdPerMTok`. */
+  usd?: number;
+  /** Present only when `box.json` supplies that rate and `fx.audPerUsd`. */
+  aud?: number;
+};
+
+/**
+ * Box-dashboard fork: what this box has asked Jev for, read from the ledger
+ * every Jev-calling tool here appends to.
+ *
+ * TypeSafe publishes no usage, credit or billing endpoint, so this is a local
+ * count of calls actually made rather than a vendor reading. It bounds nothing:
+ * there is no allowance behind it to run out of.
+ */
+export type ProviderJev = {
+  /** The current local calendar day. */
+  today: JevUsage;
+  /** The current billing cycle, or the calendar month without one. */
+  cycle: JevUsage;
+  /** Every entry the ledger still holds. */
+  allTime: JevUsage;
+  /** ISO calendar date (YYYY-MM-DD) the cycle window opens on, inclusive. */
+  cycleSince: string;
+  /** Days from `cycleSince` through today inclusive; the first day is `1`. */
+  cycleWindowDays: number;
+  /** The most recent ledger entry's own timestamp, ISO. */
+  lastCallAt: string;
+  /** The configured USD per million tokens, when `box.json` supplies one. */
+  usdPerMTok?: number;
+};
+
 export type ProviderAccount = {
   /** Opaque local lane identity, stable across refresh and discovery order. */
   accountKey: string;
@@ -424,6 +473,11 @@ export type ProviderQuota = {
    * provider reading; the AUD half is derived at read time.
    */
   aws?: ProviderAws;
+  /**
+   * Box-dashboard fork: this box's Jev ledger usage. The counts come from the
+   * provider reading and the AUD half is derived at read time.
+   */
+  jev?: ProviderJev;
   credits?: {
     remaining?: number;
     unlimited?: boolean;

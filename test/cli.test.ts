@@ -102,6 +102,7 @@ describe("CLI flag parsing", () => {
       "openrouter",
       "elevenlabs",
       "aws",
+      "jev",
     ]);
   });
 
@@ -146,6 +147,7 @@ describe("CLI flag parsing", () => {
           "openrouter",
           "elevenlabs",
           "aws",
+          "jev",
         ],
         json: true,
         full: true,
@@ -1586,6 +1588,7 @@ describe("default TOON decision blocks", () => {
     );
     PROVIDERS.elevenlabs = providerWithQuota(freshElevenLabsQuota());
     PROVIDERS.aws = providerWithQuota(emptyFreshQuota("aws", "AWS"));
+    PROVIDERS.jev = providerWithQuota(emptyFreshQuota("jev", "Jev"));
 
     const output = await capture([]);
     const named = new Set([
@@ -1605,6 +1608,7 @@ describe("default TOON decision blocks", () => {
       "deepseek",
       "elevenlabs",
       "grok",
+      "jev",
       "kimi",
       "mimo",
       "minimax",
