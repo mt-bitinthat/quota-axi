@@ -21,7 +21,7 @@ function configPath(contents: unknown): string {
 function spendDeps(): SpendDeps {
   return {
     now: () => NOW.getTime(),
-    cachePath: join(directory, "ccusage-30d.json"),
+    cachePath: join(directory, "ccusage-daily.json"),
     run: () => Promise.resolve(JSON.stringify(ccusagePayload())),
   };
 }
@@ -104,15 +104,18 @@ describe("annotateBoxLines", () => {
       }),
     });
     expect(provider(response, "claude")?.spend).toEqual({
-      windowDays: 30,
+      windowDays: 18,
+      since: "2026-09-05",
       status: "measured",
       usd: 120,
       aud: 240,
       source: "ccusage",
       refreshedAt: NOW.toISOString(),
     });
+    // Codex has no entry here, so its figure keeps the rolling fallback window.
     expect(provider(response, "codex")?.spend).toEqual({
       windowDays: 30,
+      since: "2026-08-24",
       status: "measured",
       usd: 30,
       aud: 60,
@@ -121,6 +124,75 @@ describe("annotateBoxLines", () => {
     });
     // Only the two cards that own a bucket carry the line.
     expect(provider(response, "grok")?.spend).toBeUndefined();
+  });
+
+  it("falls back to the rolling window for a card with no subscription", async () => {
+    const response = await annotate({
+      configPath: configPath({
+        subscriptions: { claude: { renewsDay: 5, amountAud: 305 } },
+      }),
+    });
+    expect(provider(response, "claude")?.spend).toMatchObject({
+      windowDays: 18,
+      since: "2026-09-05",
+    });
+    // Codex is billed by this box under no entry, so it keeps a rolling month.
+    expect(provider(response, "codex")?.spend).toMatchObject({
+      windowDays: 30,
+      since: "2026-08-24",
+    });
+  });
+
+  it("runs ccusage once, for the earliest window any card needs", async () => {
+    const asked: string[] = [];
+    const response = await annotate({
+      configPath: configPath({
+        subscriptions: {
+          claude: { renewsDay: 5, amountAud: 305 },
+          codex: { renewsDay: 20, amountAud: 35 },
+        },
+      }),
+      spendDeps: {
+        ...spendDeps(),
+        run: (since) => {
+          asked.push(since);
+          return Promise.resolve(
+            JSON.stringify({
+              daily: [
+                {
+                  period: "2026-09-10",
+                  modelBreakdowns: [
+                    { modelName: "claude-opus-5", cost: 7 },
+                    { modelName: "gpt-6-astra", cost: 11 },
+                  ],
+                },
+                {
+                  period: "2026-09-21",
+                  modelBreakdowns: [
+                    { modelName: "claude-opus-5", cost: 5 },
+                    { modelName: "gpt-6-astra", cost: 3 },
+                  ],
+                },
+              ],
+            }),
+          );
+        },
+      },
+    });
+    // One subprocess, reaching back to the earlier of the two cycles.
+    expect(asked).toEqual(["20260905"]);
+    // Claude's cycle opened on the 5th and holds both days.
+    expect(provider(response, "claude")?.spend).toMatchObject({
+      windowDays: 18,
+      since: "2026-09-05",
+      usd: 12,
+    });
+    // Codex's opened on the 20th, so the 10th is another cycle's traffic.
+    expect(provider(response, "codex")?.spend).toMatchObject({
+      windowDays: 3,
+      since: "2026-09-20",
+      usd: 3,
+    });
   });
 
   it("leaves the figure in USD when no rate is configured", async () => {
@@ -147,6 +219,7 @@ describe("annotateBoxLines", () => {
     });
     expect(provider(response, "claude")?.spend).toEqual({
       windowDays: 30,
+      since: "2026-08-24",
       status: "pending",
       source: "ccusage",
     });
@@ -163,6 +236,7 @@ describe("annotateBoxLines", () => {
     });
     expect(provider(response, "claude")?.spend).toEqual({
       windowDays: 30,
+      since: "2026-08-24",
       status: "unavailable",
       source: "ccusage",
     });

@@ -691,6 +691,7 @@ function apiSpendRows(response: QuotaAxiResponse) {
           {
             ...providerColumns(provider),
             windowDays: provider.spend.windowDays,
+            since: provider.spend.since ?? UNKNOWN,
             status: provider.spend.status,
             usd: provider.spend.usd ?? UNKNOWN,
             aud: provider.spend.aud ?? UNKNOWN,

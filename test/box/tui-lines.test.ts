@@ -67,7 +67,8 @@ const CLAUDE: BoxFields = {
     warnDays: 3,
   },
   spend: {
-    windowDays: 30,
+    windowDays: 18,
+    since: "2026-09-05",
     status: "measured",
     usd: 3654.53,
     aud: 5120.0,
@@ -84,7 +85,8 @@ const CODEX: BoxFields = {
     warnDays: 3,
   },
   spend: {
-    windowDays: 30,
+    windowDays: 18,
+    since: "2026-09-05",
     status: "measured",
     usd: 30.1,
     aud: 42.17,
@@ -100,13 +102,13 @@ describe("box dashboard card lines", () => {
       "renews 5 Oct · $305 AUD · 13d",
     );
     expect(cardLine(lines, 0, "API-equiv")).toContain(
-      "API-equiv 30d · $5,120 AUD",
+      "API-equiv 18d · $5,120 AUD",
     );
     expect(cardLine(lines, 1, "renews")).toContain(
       "renews 5 Oct · $35 AUD · 13d",
     );
     expect(cardLine(lines, 1, "API-equiv")).toContain(
-      "API-equiv 30d · $42 AUD",
+      "API-equiv 18d · $42 AUD",
     );
   });
 

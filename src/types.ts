@@ -284,15 +284,18 @@ export type ProviderSubscription = {
 };
 
 /**
- * Box-dashboard fork: what this provider's traffic over the trailing window
- * would have cost at published API list prices, as reported by ccusage.
+ * Box-dashboard fork: what this provider's traffic over the current billing
+ * cycle would have cost at published API list prices, as reported by ccusage.
  *
  * It is an equivalence, not a bill: nothing here was charged, and it is not a
  * quota reading. `status` keeps "not measured yet" distinct from "measured
  * zero", so a pending or unavailable figure can never read as no spend.
  */
 export type ProviderSpend = {
+  /** Days in the window, counted inclusively; the renewal day itself is `1`. */
   windowDays: number;
+  /** ISO calendar date (YYYY-MM-DD) the window starts on, inclusive. */
+  since?: string;
   status: "measured" | "pending" | "unavailable";
   /** Present only when `status` is `measured`. */
   usd?: number;

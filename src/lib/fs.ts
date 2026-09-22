@@ -54,11 +54,11 @@ export function cacheFilePath(): string {
 }
 
 /**
- * Box-dashboard fork: the trailing-window ccusage summary, kept beside the
- * quota cache so both honor the same XDG base.
+ * Box-dashboard fork: the priced ccusage days every card's spend window is
+ * filtered out of, kept beside the quota cache so both honor the same XDG base.
  */
 export function ccusageCacheFilePath(): string {
-  return join(cacheDirPath(), "ccusage-30d.json");
+  return join(cacheDirPath(), "ccusage-daily.json");
 }
 
 /**

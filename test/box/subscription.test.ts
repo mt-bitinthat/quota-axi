@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { nextRenewal } from "../../src/box/subscription.js";
+import {
+  lastRenewal,
+  nextRenewal,
+  rollingCycle,
+} from "../../src/box/subscription.js";
 
 const CLAUDE = { renewsDay: 5, amountAud: 305 };
 
@@ -111,5 +115,99 @@ describe("nextRenewal", () => {
 
   it("resolves undefined for an unusable clock", () => {
     expect(nextRenewal(CLAUDE, new Date(Number.NaN))).toBeUndefined();
+  });
+});
+
+describe("lastRenewal", () => {
+  it("counts the renewal day itself as the first day of the cycle", () => {
+    expect(lastRenewal(CLAUDE, local(2026, 10, 5))).toEqual({
+      since: "2026-10-05",
+      windowDays: 1,
+    });
+  });
+
+  it("counts the day after the renewal as the second", () => {
+    expect(lastRenewal(CLAUDE, local(2026, 10, 6))).toEqual({
+      since: "2026-10-05",
+      windowDays: 2,
+    });
+  });
+
+  it("reaches back into last month once this month's day is still ahead", () => {
+    expect(lastRenewal(CLAUDE, local(2026, 10, 3))).toEqual({
+      since: "2026-09-05",
+      windowDays: 29,
+    });
+  });
+
+  it("counts a cycle already open earlier this month", () => {
+    expect(lastRenewal(CLAUDE, local(2026, 9, 22))).toEqual({
+      since: "2026-09-05",
+      windowDays: 18,
+    });
+  });
+
+  it("reaches back across a year boundary", () => {
+    expect(lastRenewal(CLAUDE, local(2027, 1, 2))).toEqual({
+      since: "2026-12-05",
+      windowDays: 29,
+    });
+  });
+
+  it("clamps a 31st billing day to the last day of the month it fell in", () => {
+    // September has no 31st, so the cycle open on the 15th started on 31 Aug.
+    expect(
+      lastRenewal({ renewsDay: 31, amountAud: 20 }, local(2026, 9, 15)),
+    ).toEqual({ since: "2026-08-31", windowDays: 16 });
+    // Once the clamped day has arrived, that clamped day opens the cycle.
+    expect(
+      lastRenewal({ renewsDay: 31, amountAud: 20 }, local(2026, 9, 30)),
+    ).toEqual({ since: "2026-09-30", windowDays: 1 });
+  });
+
+  it("clamps into February", () => {
+    expect(
+      lastRenewal({ renewsDay: 31, amountAud: 20 }, local(2027, 3, 2)),
+    ).toEqual({ since: "2027-02-28", windowDays: 3 });
+    expect(
+      lastRenewal({ renewsDay: 30, amountAud: 20 }, local(2028, 3, 1)),
+    ).toEqual({ since: "2028-02-29", windowDays: 2 });
+  });
+
+  it("stays whole across a daylight-saving transition", () => {
+    // Sydney springs forward on 2026-10-04: the interval holding the change is
+    // 23 hours, and the cycle is still counted in whole calendar days.
+    const previous = process.env.TZ;
+    process.env.TZ = "Australia/Sydney";
+    try {
+      expect(lastRenewal(CLAUDE, local(2026, 10, 6))).toEqual({
+        since: "2026-10-05",
+        windowDays: 2,
+      });
+      expect(lastRenewal(CLAUDE, local(2026, 10, 3))).toEqual({
+        since: "2026-09-05",
+        windowDays: 29,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+
+  it("resolves undefined for an unusable clock", () => {
+    expect(lastRenewal(CLAUDE, new Date(Number.NaN))).toBeUndefined();
+  });
+});
+
+describe("rollingCycle", () => {
+  it("counts the fallback window inclusively of today", () => {
+    expect(rollingCycle(local(2026, 9, 22), 30)).toEqual({
+      since: "2026-08-24",
+      windowDays: 30,
+    });
+    expect(rollingCycle(local(2026, 1, 1), 30)).toEqual({
+      since: "2025-12-03",
+      windowDays: 30,
+    });
   });
 });

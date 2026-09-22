@@ -2,6 +2,7 @@ import {
   peekCcusage,
   primeCcusage,
   resolveCcusage,
+  spendBucketsSince,
   SPEND_WINDOW_DAYS,
   type SpendDeps,
   type SpendResult,
@@ -13,7 +14,12 @@ import type {
   QuotaAxiResponse,
 } from "../types.js";
 import { readBoxConfig, type BoxConfig } from "./config.js";
-import { nextRenewal } from "./subscription.js";
+import {
+  lastRenewal,
+  nextRenewal,
+  rollingCycle,
+  type SpendCycle,
+} from "./subscription.js";
 
 /**
  * Box-dashboard fork: attach the two operator-facing money lines to the report.
@@ -29,16 +35,19 @@ const SPEND_BUCKET: Partial<Record<ProviderId, "claude" | "other">> = {
   codex: "other",
 };
 
-export type BoxAnnotationOptions = {
+export type BoxSpendOptions = {
+  now?: Date;
+  configPath?: string;
+  spendDeps?: SpendDeps;
+};
+
+export type BoxAnnotationOptions = BoxSpendOptions & {
   /**
    * Whether to wait for the ccusage window. The one-shot machine surfaces wait,
    * because they have no second frame to fill the figure in on; the TUI never
    * does, and shows the pending line until a later refresh picks it up.
    */
   awaitSpend: boolean;
-  now?: Date;
-  configPath?: string;
-  spendDeps?: SpendDeps;
 };
 
 /** Whether any of these providers owns a spend bucket, and so a spend line. */
@@ -47,16 +56,18 @@ export function boxSpendApplies(providers: readonly ProviderId[]): boolean {
 }
 
 /**
- * Start the ccusage window so it runs alongside the provider fetches. A report
+ * Start the ccusage run so it happens alongside the provider fetches. A report
  * that asked for no card with a spend line spawns nothing: the subprocess is
  * only ever worth its latency when a card would show the figure.
  */
 export function primeBoxSpend(
   providers: readonly ProviderId[],
-  deps: SpendDeps = {},
+  options: BoxSpendOptions = {},
 ): void {
   if (!boxSpendApplies(providers)) return;
-  primeCcusage(deps);
+  const now = options.now ?? new Date();
+  const cycles = spendCycles(providers, readBoxConfig(options.configPath), now);
+  primeCcusage(earliestSince(cycles), options.spendDeps ?? {});
 }
 
 export async function annotateBoxLines(
@@ -67,22 +78,61 @@ export async function annotateBoxLines(
   const config = readBoxConfig(options.configPath);
   const deps = options.spendDeps ?? {};
   const providers = response.providers.map((provider) => provider.provider);
+  const cycles = spendCycles(providers, config, now);
+  const since = earliestSince(cycles);
   const spend: SpendResult = !boxSpendApplies(providers)
     ? { status: "pending" }
     : options.awaitSpend
-      ? await resolveCcusage(deps)
-      : peekCcusage(deps);
+      ? await resolveCcusage(since, deps)
+      : peekCcusage(since, deps);
   return {
     ...response,
     providers: response.providers.map((provider) =>
-      annotateProvider(provider, config, spend, now),
+      annotateProvider(provider, config, cycles, spend, now),
     ),
   };
+}
+
+/**
+ * The window each card's figure covers: the billing cycle it is inside, or the
+ * rolling fallback for a card this box has no subscription entry for. A card
+ * always has a window, so a missing `box.json` costs the figure its cycle, not
+ * its line.
+ */
+function spendCycles(
+  providers: readonly ProviderId[],
+  config: BoxConfig | undefined,
+  now: Date,
+): Map<ProviderId, SpendCycle> {
+  const fallback = rollingCycle(now, SPEND_WINDOW_DAYS);
+  const cycles = new Map<ProviderId, SpendCycle>();
+  for (const provider of providers) {
+    if (SPEND_BUCKET[provider] === undefined) continue;
+    const entry = config?.subscriptions[provider];
+    cycles.set(provider, (entry && lastRenewal(entry, now)) ?? fallback);
+  }
+  return cycles;
+}
+
+/**
+ * How far back the single ccusage run has to reach to answer every card. Each
+ * card then filters its own window out of the same priced days, so two cards
+ * billed on different days of the month still cost one subprocess.
+ */
+function earliestSince(cycles: ReadonlyMap<ProviderId, SpendCycle>): string {
+  let earliest: string | undefined;
+  for (const cycle of cycles.values()) {
+    if (earliest === undefined || cycle.since < earliest) {
+      earliest = cycle.since;
+    }
+  }
+  return earliest ?? rollingCycle(new Date(), SPEND_WINDOW_DAYS).since;
 }
 
 function annotateProvider(
   provider: ProviderQuota,
   config: BoxConfig | undefined,
+  cycles: ReadonlyMap<ProviderId, SpendCycle>,
   spend: SpendResult,
   now: Date,
 ): ProviderQuota {
@@ -91,10 +141,11 @@ function annotateProvider(
     ? nextRenewal(entry, now, config?.warnDays)
     : undefined;
   const bucket = SPEND_BUCKET[provider.provider];
+  const cycle = cycles.get(provider.provider);
   const spendField =
-    bucket === undefined
+    bucket === undefined || cycle === undefined
       ? undefined
-      : providerSpend(spend, bucket, config?.fx?.audPerUsd);
+      : providerSpend(spend, bucket, cycle, config?.fx?.audPerUsd);
   if (subscription === undefined && spendField === undefined) return provider;
   return {
     ...provider,
@@ -106,17 +157,17 @@ function annotateProvider(
 function providerSpend(
   spend: SpendResult,
   bucket: "claude" | "other",
+  cycle: SpendCycle,
   audPerUsd: number | undefined,
 ): ProviderSpend {
   const base = {
-    windowDays: SPEND_WINDOW_DAYS,
+    windowDays: cycle.windowDays,
+    since: cycle.since,
     source: "ccusage" as const,
   };
   if (spend.status !== "measured") return { ...base, status: spend.status };
-  const usd =
-    bucket === "claude"
-      ? spend.reading.buckets.claudeUsd
-      : spend.reading.buckets.otherUsd;
+  const buckets = spendBucketsSince(spend.reading, cycle.since);
+  const usd = bucket === "claude" ? buckets.claudeUsd : buckets.otherUsd;
   return {
     ...base,
     status: "measured",

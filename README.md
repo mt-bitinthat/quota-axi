@@ -375,7 +375,7 @@ Neither is a quota window, neither is ever sent to a provider, and neither is wr
 
 ```
 │   renews 5 Oct · $305 AUD · 13d               │
-│   API-equiv 30d · $10,379 AUD                 │
+│   API-equiv 18d · $10,379 AUD                 │
 ```
 
 ### `box.json`
@@ -404,8 +404,13 @@ The `13d` segment turns red at `warnDays` days or fewer; `warnDays` is a whole n
 
 ### API-equivalent spend
 
-The second line is what the last 30 days of local agent traffic would have cost at published API list prices.
+The second line is what this billing cycle's local agent traffic would have cost at published API list prices.
 It is an equivalence, not a bill: nothing on it was charged, and it is not a quota reading.
+
+**Window.** The figure covers the provider's current billing cycle: from its most recent `renewsDay`, inclusive, through today.
+The renewal day itself reads `1d`, the day after reads `2d`, and the window restarts every renewal rather than trailing behind one.
+A day past the end of a short month is clamped exactly as the renewal line clamps it, so a `31` cycle opened on 31 August is still the cycle a 15 September reading is inside.
+A provider with no `box.json` entry has no cycle and falls back to a rolling 30 days ending today.
 
 The figure comes from [ccusage](https://github.com/ccusage/ccusage), which reads this machine's own agent transcripts and prices them against the **LiteLLM model price table** (`model_prices_and_context_window.json`) that ccusage embeds at build time from a locked revision.
 `ccusage --offline` uses that pre-cached table, and per-model overrides are possible in ccusage's own `ccusage.json`.
@@ -423,13 +428,17 @@ Set `QUOTA_AXI_CCUSAGE` to an explicit ccusage path to override discovery, or to
 **Coverage.** ccusage counts Claude Code transcripts, Codex CLI sessions under `~/.codex/sessions`, and Pi sessions, which it reports with a `[pi] ` prefix on the model name.
 Costs are summed per model over the window: models that name a Claude model after any harness prefix go to the Claude card, and every other model goes to the Codex card.
 The two cards therefore sum to ccusage's own `totals.totalCost` for the same window, to the cent.
+A day ccusage returns without a calendar date is dropped rather than counted, because it cannot be placed in a cycle.
 
 **Currency.** Figures are converted with `fx.audPerUsd` and labeled `AUD`.
 Without a configured rate the figure stays in the currency ccusage priced it in and is labeled `USD`; no rate is ever guessed.
 
 **Timing.** The ccusage run takes about 3 seconds on a busy box, so it is never on the render path.
-It starts alongside the provider fetches, and its summary is cached for ten minutes at `$XDG_CACHE_HOME/quota-axi/ccusage-30d.json` (default `~/.cache/quota-axi/`), owner-readable only and written through a temporary file.
-Every report waits for it: the wait is a few seconds on a cold or stale cache and nothing otherwise, and a frame only reads `API-equiv 30d · …` when the figure is still being computed after that wait.
+One run answers every card: it asks for the earliest cycle start any configured provider needs, and each card's window is then a filter over the priced days it returned.
+A cycle rolling over, or a second card billed on another day of the month, therefore costs no second subprocess.
+It starts alongside the provider fetches, and those priced days are cached for ten minutes at `$XDG_CACHE_HOME/quota-axi/ccusage-daily.json` (default `~/.cache/quota-axi/`), owner-readable only and written through a temporary file.
+A cache reaching at least as far back as the window being read serves it; one written by an earlier schema is ignored, and the next refresh replaces it.
+Every report waits for it: the wait is a few seconds on a cold or stale cache and nothing otherwise, and a frame only reads `API-equiv 18d · …` when the figure is still being computed after that wait.
 The TOON and JSON surfaces render once, so they do wait.
 
 ### Machine surfaces
@@ -444,7 +453,8 @@ The TOON and JSON surfaces render once, so they do wait.
     "daysUntil": 13
   },
   "spend": {
-    "windowDays": 30,
+    "windowDays": 18,
+    "since": "2026-09-05",
     "status": "measured",
     "usd": 7409.01,
     "aud": 10380.02,
@@ -454,6 +464,7 @@ The TOON and JSON surfaces render once, so they do wait.
 }
 ```
 
+`spend.windowDays` is the number of days in the window, counted inclusively, and `spend.since` is the ISO calendar date it starts on.
 `spend.status` is `measured`, `pending`, or `unavailable`, so a figure that has not arrived can never be read as no spend; `usd`, `aud`, and `refreshedAt` are present only for `measured`, and `aud` only when a rate is configured.
 `--full` adds matching `subscriptions[]` and `apiSpend[]` TOON blocks.
 Both fields are derived locally on every read and are never cached, so no provider snapshot can carry them.
