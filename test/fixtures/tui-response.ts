@@ -275,6 +275,51 @@ export function awsProvider(): ProviderQuota {
   };
 }
 
+export function jevProvider(): ProviderQuota {
+  return {
+    provider: "jev",
+    label: "Jev",
+    source: "ledger",
+    windows: [],
+    jev: {
+      today: {
+        calls: 12,
+        inputTokens: 2_100_000,
+        outputTokens: 400_000,
+        tokens: 2_500_000,
+        usd: 8.75,
+        aud: 12.26,
+      },
+      cycle: {
+        calls: 40,
+        inputTokens: 8_200_000,
+        outputTokens: 1_600_000,
+        tokens: 9_800_000,
+        usd: 34.3,
+        aud: 48.05,
+      },
+      allTime: {
+        calls: 91,
+        inputTokens: 18_000_000,
+        outputTokens: 3_400_000,
+        tokens: 21_400_000,
+        usd: 74.9,
+        aud: 104.93,
+      },
+      cycleSince: "2026-09-01",
+      cycleWindowDays: 22,
+      lastCallAt: "2026-09-22T07:08:40+0000",
+      usdPerMTok: 3.5,
+    },
+    state: {
+      status: "fresh",
+      stale: false,
+      refreshedAt: GENERATED_AT,
+      sourcesTried: ["ledger"],
+    },
+  };
+}
+
 export function signedOutProvider(
   provider: "cursor" | "copilot" | "kimi",
   error: string,

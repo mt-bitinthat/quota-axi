@@ -3,6 +3,7 @@ import type {
   OpenRouterCredits,
   OpenRouterFreeModelRequests,
   OpenRouterUsage,
+  JevUsage,
   ProviderAws,
   ProviderId,
   ProviderQuota,
@@ -246,11 +247,16 @@ function buildLiveCard(provider: ProviderQuota, generatedAtMs: number): Card {
   // The aws card reports money already spent rather than headroom, so its two
   // figure lines take the headline slot outright: there is no bound to draw.
   const awsHeadline = awsCardLines(provider);
+  // The jev card counts calls already made rather than headroom, for the same
+  // reason the aws card reports money already spent: there is no bound to draw.
+  const jevHeadline = jevCardLines(provider);
   const creditsLine = creditsOnlyHeadline(provider, stale);
   if (openRouterHeadline) {
     lines.push(...openRouterHeadline);
   } else if (awsHeadline) {
     lines.push(...awsHeadline);
+  } else if (jevHeadline) {
+    lines.push(...jevHeadline);
   } else if (creditsLine) {
     lines.push(...creditsLine);
   } else if (hasWhollyUnknownWindowRelationships(provider)) {
@@ -760,6 +766,64 @@ function awsCardLines(provider: ProviderQuota): Line[] | undefined {
     ["rate", instanceRateText(aws, unit)],
   ];
   return rows.map(([label, text]) => boxFigureLine(label, text));
+}
+
+/**
+ * Box-dashboard fork: what this box has asked Jev for today and over its current
+ * cycle - the calls made, the tokens they moved, and what an operator-configured
+ * rate prices those tokens at.
+ *
+ * It is usage already spent, not headroom, so it is never a bar and never a
+ * percentage, and its money segment is labelled with the currency it is actually
+ * in - exactly as the other box figure lines are. Without a configured rate the
+ * card counts calls and tokens and shows no money at all, rather than pricing
+ * the traffic at a rate nobody published.
+ */
+function jevCardLines(provider: ProviderQuota): Line[] | undefined {
+  const jev = provider.jev;
+  if (!jev) return undefined;
+  const rows: [string, string][] = [
+    ["today", jevUsageText(jev.today)],
+    ["cycle", jevUsageText(jev.cycle)],
+  ];
+  return rows.map(([label, text]) => boxFigureLine(label, text));
+}
+
+function jevUsageText(usage: JevUsage): string {
+  const calls = `${usage.calls} ${usage.calls === 1 ? "call" : "calls"}`;
+  const tokens = formatTokens(usage.tokens);
+  // AUD only ever accompanies a USD figure, so the label follows whichever half
+  // survived the operator's configuration rather than implying a conversion.
+  const money =
+    usage.aud !== undefined
+      ? `${formatCardMoney(usage.aud)} AUD`
+      : usage.usd !== undefined
+        ? `${formatCardMoney(usage.usd)} USD`
+        : undefined;
+  if (money === undefined) {
+    return firstFitting([`${calls} · ${tokens} tok`, `${calls} · ${tokens}`]);
+  }
+  return firstFitting([
+    `${calls} · ${tokens} tok · ${money}`,
+    `${calls} · ${tokens} · ${money}`,
+    `${calls} · ${tokens} tok`,
+    `${calls} · ${tokens}`,
+  ]);
+}
+
+/**
+ * A token count at card magnitude: thousands with no decimals below a million,
+ * millions to one decimal from there. A nonzero count that rounds away reads
+ * `<1k` rather than `0k`, for the same reason a small money figure keeps its
+ * cents - reporting real traffic as zero is the one thing the count exists to
+ * disprove.
+ */
+export function formatTokens(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens < 0) return "?";
+  if (tokens >= 1e6) return `${(tokens / 1e6).toFixed(1)}M`;
+  const thousands = Math.round(tokens / 1000);
+  if (thousands === 0) return tokens === 0 ? "0k" : "<1k";
+  return `${thousands}k`;
 }
 
 function sessionCostText(aws: ProviderAws, unit: string): string {

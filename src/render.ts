@@ -8,6 +8,7 @@ import type {
   AuthProviderReport,
   BoundConflict,
   EffectiveAvailability,
+  JevUsage,
   ModelsResponse,
   ProviderId,
   ProviderQuota,
@@ -485,6 +486,7 @@ function auditBlocks(response: QuotaAxiResponse): string[] {
     encode({ apiSpend: apiSpendRows(response) }),
     encode({ openrouter: openRouterRows(response) }),
     encode({ aws: awsRows(response) }),
+    encode({ jev: jevRows(response) }),
   ];
 }
 
@@ -765,6 +767,42 @@ function awsRows(response: QuotaAxiResponse) {
         sessionAud: aws.sessionAud ?? UNKNOWN,
       },
     ];
+  });
+}
+
+/**
+ * Box-dashboard fork: the Jev ledger counts, as the card's rows - one row per
+ * aggregation window, so `today`, `cycle` and `allTime` are comparable side by
+ * side rather than flattened into one wide row.
+ *
+ * Both currencies sit beside the counts for the same reason the AWS rows carry
+ * both: `usd` is what the operator's configured rate makes of the tokens, `aud`
+ * is what the FX rate makes of that, and a reading taken without either is
+ * visibly missing that half rather than showing a converted guess.
+ */
+function jevRows(response: QuotaAxiResponse) {
+  return response.providers.flatMap((provider) => {
+    const jev = provider.jev;
+    if (!jev) return [];
+    const windows: [string, JevUsage][] = [
+      ["today", jev.today],
+      ["cycle", jev.cycle],
+      ["allTime", jev.allTime],
+    ];
+    return windows.map(([window, usage]) => ({
+      ...providerColumns(provider),
+      window,
+      calls: usage.calls,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      tokens: usage.tokens,
+      usd: usage.usd ?? UNKNOWN,
+      aud: usage.aud ?? UNKNOWN,
+      cycleSince: jev.cycleSince,
+      cycleWindowDays: jev.cycleWindowDays,
+      lastCallAt: jev.lastCallAt,
+      usdPerMTok: jev.usdPerMTok ?? UNKNOWN,
+    }));
   });
 }
 

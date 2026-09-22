@@ -8,10 +8,12 @@ import {
   type SpendResult,
 } from "../spend/ccusage.js";
 import type {
+  JevUsage,
   OpenRouterCredits,
   OpenRouterUsage,
   ProviderAws,
   ProviderId,
+  ProviderJev,
   ProviderOpenRouter,
   ProviderQuota,
   ProviderSpend,
@@ -158,11 +160,13 @@ function annotateProvider(
         );
   const openrouter = openRouterAud(provider.openrouter, config?.fx?.audPerUsd);
   const aws = awsAud(provider.aws, config?.fx?.audPerUsd);
+  const jev = jevAud(provider.jev, config?.fx?.audPerUsd);
   if (
     subscription === undefined &&
     spendField === undefined &&
     openrouter === undefined &&
-    aws === undefined
+    aws === undefined &&
+    jev === undefined
   )
     return provider;
   return {
@@ -171,7 +175,36 @@ function annotateProvider(
     ...(spendField ? { spend: spendField } : {}),
     ...(openrouter ? { openrouter } : {}),
     ...(aws ? { aws } : {}),
+    ...(jev ? { jev } : {}),
   };
+}
+
+/**
+ * The AUD half of the Jev card's figures. The provider prices its tokens in USD
+ * because `jev.usdPerMTok` is quoted that way, and the conversion happens here
+ * for the same reason the AWS and OpenRouter ones do: the rate is applied fresh
+ * on every read rather than baked into the reading.
+ *
+ * A window with no USD figure - the operator configured no rate at all - gets no
+ * AUD one either. There is nothing to convert, and a converted nothing reads as
+ * a measured zero.
+ */
+function jevAud(
+  figures: ProviderJev | undefined,
+  audPerUsd: number | undefined,
+): ProviderJev | undefined {
+  if (!figures || audPerUsd === undefined) return figures;
+  return {
+    ...figures,
+    today: usageAud(figures.today, audPerUsd),
+    cycle: usageAud(figures.cycle, audPerUsd),
+    allTime: usageAud(figures.allTime, audPerUsd),
+  };
+}
+
+function usageAud(usage: JevUsage, audPerUsd: number): JevUsage {
+  if (usage.usd === undefined) return usage;
+  return { ...usage, aud: round2(usage.usd * audPerUsd) };
 }
 
 /**

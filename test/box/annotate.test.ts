@@ -6,10 +6,11 @@ import { annotateBoxLines } from "../../src/box/annotate.js";
 import { resetCcusageState, type SpendDeps } from "../../src/spend/ccusage.js";
 import {
   fixtureResponse,
+  jevProvider,
   openRouterProvider,
 } from "../fixtures/tui-response.js";
 import { ccusagePayload } from "../fixtures/ccusage.js";
-import type { QuotaAxiResponse } from "../../src/types.js";
+import type { JevUsage, QuotaAxiResponse } from "../../src/types.js";
 
 const NOW = new Date(2026, 8, 22, 10, 0, 0);
 
@@ -47,6 +48,28 @@ function withOpenRouter(): QuotaAxiResponse {
   return {
     ...response,
     providers: [...response.providers, openRouterProvider()],
+  };
+}
+
+/** The fixture fleet plus the jev card, priced in USD by the provider. */
+function withJev(): QuotaAxiResponse {
+  const response = fixtureResponse();
+  const priced = jevProvider();
+  const jev = priced.jev as NonNullable<typeof priced.jev>;
+  return {
+    ...response,
+    providers: [
+      ...response.providers,
+      {
+        ...priced,
+        jev: {
+          ...jev,
+          today: { ...jev.today, aud: undefined },
+          cycle: { ...jev.cycle, aud: undefined },
+          allTime: { ...jev.allTime, aud: undefined },
+        },
+      },
+    ],
   };
 }
 
@@ -372,6 +395,80 @@ describe("annotateBoxLines", () => {
     expect(openrouter?.creditsUsd?.remaining).toBeCloseTo(11.493259515, 9);
     expect(openrouter?.creditsAud).toBeUndefined();
     expect(openrouter?.usageAud).toBeUndefined();
+  });
+
+  it("converts every Jev window at the configured rate", async () => {
+    const response = await annotate(
+      {
+        configPath: configPath({
+          fx: { audPerUsd: 1.401 },
+          subscriptions: {},
+          jev: { usdPerMTok: 3.5 },
+        }),
+      },
+      withJev(),
+    );
+
+    const jev = provider(response, "jev")?.jev;
+    expect(jev?.today).toMatchObject({ usd: 8.75, aud: 12.26 });
+    expect(jev?.cycle).toMatchObject({ usd: 34.3, aud: 48.05 });
+    expect(jev?.allTime).toMatchObject({ usd: 74.9, aud: 104.93 });
+    // The counts themselves are the provider's and are never reconverted.
+    expect(jev?.today.tokens).toBe(2_500_000);
+  });
+
+  it("leaves the Jev figures in USD when no fx rate is configured", async () => {
+    const response = await annotate(
+      { configPath: configPath({ jev: { usdPerMTok: 3.5 } }) },
+      withJev(),
+    );
+
+    const jev = provider(response, "jev")?.jev;
+    expect(jev?.today.usd).toBe(8.75);
+    expect(jev?.today.aud).toBeUndefined();
+    expect(jev?.cycle.aud).toBeUndefined();
+    expect(jev?.allTime.aud).toBeUndefined();
+  });
+
+  it("adds no Jev money at all when the card counted tokens unpriced", async () => {
+    const priced = withJev();
+    const unpricedFleet: QuotaAxiResponse = {
+      ...priced,
+      providers: priced.providers.map((entry) => {
+        if (entry.provider !== "jev" || !entry.jev) return entry;
+        const counts = (usage: JevUsage): JevUsage => ({
+          calls: usage.calls,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          tokens: usage.tokens,
+        });
+        return {
+          ...entry,
+          jev: {
+            ...entry.jev,
+            usdPerMTok: undefined,
+            today: counts(entry.jev.today),
+            cycle: counts(entry.jev.cycle),
+            allTime: counts(entry.jev.allTime),
+          },
+        };
+      }),
+    };
+    const response = await annotate(
+      {
+        configPath: configPath({ fx: { audPerUsd: 1.401 }, subscriptions: {} }),
+      },
+      unpricedFleet,
+    );
+
+    const jev = provider(response, "jev")?.jev;
+    expect(jev?.today).toEqual({
+      calls: 12,
+      inputTokens: 2_100_000,
+      outputTokens: 400_000,
+      tokens: 2_500_000,
+    });
+    expect(jev?.cycle.aud).toBeUndefined();
   });
 
   it("leaves a provider with no OpenRouter figures alone", async () => {
