@@ -285,8 +285,14 @@ function creditsWithRemaining(
   return {
     bought: credits.bought,
     used: credits.used,
-    remaining: credits.bought - credits.used,
+    // The vendor's own figures carry nine decimals, so the subtraction is
+    // rounded back to that: the extra digits are binary noise, not precision.
+    remaining: roundVendorPrecision(credits.bought - credits.used),
   };
+}
+
+function roundVendorPrecision(value: number): number {
+  return Math.round(value * 1e9) / 1e9;
 }
 
 export function normalizeOpenRouterCredits(

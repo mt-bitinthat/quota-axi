@@ -1,5 +1,8 @@
 import type {
   EffectiveAvailability,
+  OpenRouterCredits,
+  OpenRouterFreeModelRequests,
+  OpenRouterUsage,
   ProviderId,
   ProviderQuota,
   ProviderSpend,
@@ -34,6 +37,9 @@ const TWO_COLUMN_MIN = CARD_WIDTH * 2 + CARD_GUTTER;
 const EFFECTIVE_BAR_WIDTH = 41;
 /** 3 gutter + 8 label + bar + 1 + 4 percent + 2 + 6 reset + 1 = CARD_INTERIOR. */
 const WINDOW_BAR_WIDTH = CARD_INTERIOR - 25;
+/** 3 gutter + 9 label + figures + 1 spare = CARD_INTERIOR. */
+const BOX_FIGURE_LABEL_WIDTH = 9;
+const BOX_FIGURE_WIDTH = CARD_INTERIOR - 3 - BOX_FIGURE_LABEL_WIDTH - 1;
 const MIN_COLUMNS = 80;
 const MAX_COLUMNS = 120;
 const GRAPHEME_SEGMENTER = new Intl.Segmenter("en", {
@@ -230,8 +236,14 @@ function buildLiveCard(provider: ProviderQuota, generatedAtMs: number): Card {
   ];
 
   const headline = pickHeadlineAvailability(provider);
+  // An uncapped OpenRouter key has no window and no bound, so its own figures
+  // take the slot the bare `unlimited` line would otherwise have had.
+  const openRouterHeadline =
+    provider.windows.length === 0 ? openRouterCardLines(provider) : undefined;
   const creditsLine = creditsOnlyHeadline(provider, stale);
-  if (creditsLine) {
+  if (openRouterHeadline) {
+    lines.push(...openRouterHeadline);
+  } else if (creditsLine) {
     lines.push(...creditsLine);
   } else if (hasWhollyUnknownWindowRelationships(provider)) {
     lines.push(...windowsOnlyHeadline(stale));
@@ -684,7 +696,100 @@ function boxCardLines(provider: ProviderQuota): Line[] {
       ),
     );
   }
+  // A capped key keeps its own headline bar, so its figures belong here rather
+  // than in the headline slot an uncapped one leaves free.
+  if (provider.windows.length > 0) {
+    lines.push(...(openRouterCardLines(provider) ?? []));
+  }
   return lines;
+}
+
+/**
+ * Box-dashboard fork: OpenRouter's own three figures - what is left of the
+ * credits bought, what this key has drawn over the vendor's own windows, and
+ * the free-model request allowance.
+ *
+ * They are the vendor's numbers rather than local billing facts, but they are
+ * money on a card whose quota block has nothing to draw, so they follow the
+ * same rules as the other box lines: never a bar, never a percentage, and
+ * labelled with the currency they are actually in.
+ */
+function openRouterCardLines(provider: ProviderQuota): Line[] | undefined {
+  const figures = provider.openrouter;
+  if (!figures) return undefined;
+  const credits = figures.creditsAud ?? figures.creditsUsd;
+  const usage = figures.usageAud ?? figures.usageUsd;
+  // Without a configured rate the figures are still in the currency the vendor
+  // priced them in, and the line says so rather than implying AUD.
+  const unit = figures.creditsAud || figures.usageAud ? "AUD" : "USD";
+  const rows: [string, string][] = [];
+  if (credits) rows.push(["credits", creditsText(credits, unit)]);
+  if (usage) rows.push(["today", usageText(usage, unit)]);
+  if (figures.freeModelRequests) {
+    rows.push(["free", freeRequestsText(figures.freeModelRequests)]);
+  }
+  if (rows.length === 0) return undefined;
+  return rows.map(([label, text]) =>
+    interior(
+      [
+        { text: "   " },
+        {
+          text: padEndDisplay(label, BOX_FIGURE_LABEL_WIDTH),
+          style: "label",
+        },
+        { text: truncate(text, BOX_FIGURE_WIDTH), style: "dim" },
+      ],
+      "border",
+    ),
+  );
+}
+
+/**
+ * The first form of a figure line that fits the card, longest first. A card
+ * this narrow cannot hold every figure at every magnitude, so each line sheds
+ * its least useful part rather than its own digits - the same rule the spend
+ * line's ratio follows.
+ */
+function firstFitting(candidates: string[]): string {
+  return (
+    candidates.find(
+      (candidate) => displayWidth(candidate) <= BOX_FIGURE_WIDTH,
+    ) ??
+    candidates.at(-1) ??
+    ""
+  );
+}
+
+function creditsText(credits: OpenRouterCredits, unit: string): string {
+  const left = `${formatCardMoney(credits.remaining)} ${unit} left`;
+  const used = formatCardMoney(credits.used);
+  const bought = formatCardMoney(credits.bought);
+  return firstFitting([
+    `${left} · ${used} used of ${bought}`,
+    `${left} · ${used} of ${bought}`,
+    left,
+  ]);
+}
+
+function usageText(usage: OpenRouterUsage, unit: string): string {
+  const today = `${formatCardMoney(usage.today)} ${unit}`;
+  const week = formatCardMoney(usage.week);
+  const month = formatCardMoney(usage.month);
+  return firstFitting([
+    `${today} · week ${week} · month ${month}`,
+    `${today} · wk ${week} · mo ${month}`,
+    `${today} · mo ${month}`,
+    today,
+  ]);
+}
+
+/** Requests, not money: no rate reaches these and no currency labels them. */
+function freeRequestsText(free: OpenRouterFreeModelRequests): string {
+  return firstFitting([
+    `${free.used} of ${free.limit} requests today`,
+    `${free.used} of ${free.limit} requests`,
+    `${free.used}/${free.limit}`,
+  ]);
 }
 
 function renewalLine(subscription: ProviderSubscription): Line {
@@ -767,6 +872,26 @@ export function formatConfiguredMoney(amount: number): string {
   if (!Number.isFinite(amount)) return "?";
   if (Number.isInteger(amount)) return formatMoney(amount);
   return `$${MONEY_FORMAT.format(Math.floor(amount))}${amount.toFixed(2).slice(-3)}`;
+}
+
+const CARD_CENTS_FORMAT = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * A reported figure on a card: whole dollars once there are at least ten of
+ * them, cents below that. Rounding a small figure to the dollar prints `$0`,
+ * which reads as no spend at all - the one thing a spend figure exists to
+ * disprove.
+ */
+export function formatCardMoney(amount: number): string {
+  if (!Number.isFinite(amount)) return "?";
+  const magnitude = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+  return magnitude >= 10
+    ? `${sign}${formatMoney(magnitude)}`
+    : `${sign}$${CARD_CENTS_FORMAT.format(magnitude)}`;
 }
 
 function cardNotes(provider: ProviderQuota): string[] {

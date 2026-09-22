@@ -483,6 +483,7 @@ function auditBlocks(response: QuotaAxiResponse): string[] {
     encode({ attempts }),
     encode({ subscriptions: subscriptionRows(response) }),
     encode({ apiSpend: apiSpendRows(response) }),
+    encode({ openrouter: openRouterRows(response) }),
   ];
 }
 
@@ -702,6 +703,42 @@ function apiSpendRows(response: QuotaAxiResponse) {
         ]
       : [],
   );
+}
+
+/**
+ * Box-dashboard fork: the figures OpenRouter's own endpoints reported, as the
+ * card's rows. Both currencies are carried side by side - `usd` is what the
+ * vendor answered, `aud` is what the operator's configured rate makes of it -
+ * so a reading with no rate is visibly missing its AUD half rather than
+ * silently showing a converted figure.
+ */
+function openRouterRows(response: QuotaAxiResponse) {
+  return response.providers.flatMap((provider) => {
+    const figures = provider.openrouter;
+    if (!figures) return [];
+    return [
+      {
+        ...providerColumns(provider),
+        creditsBoughtUsd: figures.creditsUsd?.bought ?? UNKNOWN,
+        creditsUsedUsd: figures.creditsUsd?.used ?? UNKNOWN,
+        creditsRemainingUsd: figures.creditsUsd?.remaining ?? UNKNOWN,
+        creditsBoughtAud: figures.creditsAud?.bought ?? UNKNOWN,
+        creditsUsedAud: figures.creditsAud?.used ?? UNKNOWN,
+        creditsRemainingAud: figures.creditsAud?.remaining ?? UNKNOWN,
+        usageAllTimeUsd: figures.usageUsd?.allTime ?? UNKNOWN,
+        usageTodayUsd: figures.usageUsd?.today ?? UNKNOWN,
+        usageWeekUsd: figures.usageUsd?.week ?? UNKNOWN,
+        usageMonthUsd: figures.usageUsd?.month ?? UNKNOWN,
+        usageAllTimeAud: figures.usageAud?.allTime ?? UNKNOWN,
+        usageTodayAud: figures.usageAud?.today ?? UNKNOWN,
+        usageWeekAud: figures.usageAud?.week ?? UNKNOWN,
+        usageMonthAud: figures.usageAud?.month ?? UNKNOWN,
+        freeRequestsUsed: figures.freeModelRequests?.used ?? UNKNOWN,
+        freeRequestsLimit: figures.freeModelRequests?.limit ?? UNKNOWN,
+        freeRequestsRemaining: figures.freeModelRequests?.remaining ?? UNKNOWN,
+      },
+    ];
+  });
 }
 
 function attemptRow(provider: ProviderQuota, attempt: SourceAttempt) {

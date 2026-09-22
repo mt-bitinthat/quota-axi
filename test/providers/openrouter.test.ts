@@ -245,11 +245,7 @@ describe("OpenRouter provider", () => {
     }).fetchQuota(OPTIONS);
 
     expect(report.openrouter).toEqual({
-      creditsUsd: {
-        bought: 140,
-        used: 128.506740485,
-        remaining: 140 - 128.506740485,
-      },
+      creditsUsd: { bought: 140, used: 128.506740485, remaining: 11.493259515 },
       usageUsd: {
         allTime: 128.506740485,
         today: 0.12874695,
