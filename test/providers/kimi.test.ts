@@ -1434,6 +1434,8 @@ describe("Kimi credential outcomes and cache policy", () => {
     const windows = [
       quotaWindow("five_hour", "session"),
       quotaWindow("weekly", "weekly"),
+      // No reset and no declared duration: nothing bounds how long it stays
+      // true, so it is never served from cache.
       quotaWindow("limit:2", "unknown"),
     ];
     const justBeforeFiveHours = await transientWithCache(
@@ -1442,7 +1444,6 @@ describe("Kimi credential outcomes and cache policy", () => {
     expect(justBeforeFiveHours.windows.map(({ id }) => id)).toEqual([
       "five_hour",
       "weekly",
-      "limit:2",
     ]);
 
     const atFiveHours = await transientWithCache(
@@ -1455,6 +1456,55 @@ describe("Kimi credential outcomes and cache policy", () => {
     );
     expect(atSevenDays.state.status).toBe("error");
     expect(atSevenDays.windows).toEqual([]);
+  });
+
+  it("keeps the five-hour bound for a resetless monthly window", async () => {
+    const windows = [
+      quotaWindow("month_total", "monthly"),
+      quotaWindow("weekly", "weekly"),
+    ];
+    const justBeforeFiveHours = await transientWithCache(
+      cachedQuota(windows, NOW - 18_000_000 + 1),
+    );
+    expect(justBeforeFiveHours.windows.map(({ id }) => id)).toEqual([
+      "month_total",
+      "weekly",
+    ]);
+
+    const atFiveHours = await transientWithCache(
+      cachedQuota(windows, NOW - 18_000_000),
+    );
+    expect(atFiveHours.windows.map(({ id }) => id)).toEqual(["weekly"]);
+
+    const onlyMonthly = await transientWithCache(
+      cachedQuota([quotaWindow("month_total", "monthly")], NOW - 18_000_000),
+    );
+    expect(onlyMonthly).toMatchObject({
+      source: "unavailable",
+      windows: [],
+      state: { status: "error", stale: false, error: "provider_unavailable" },
+    });
+  });
+
+  it("names only surviving or unwindowed untrusted ids in a stale report", async () => {
+    const cached = cachedQuota([
+      quotaWindow("weekly", "weekly", "2027-02-08T04:05:06.000Z"),
+      quotaWindow("limit:2", "unknown"),
+    ]);
+    cached.state.untrustedWindowIds = ["limit:2", "usages:limit_5h"];
+    const report = await transientWithCache(cached);
+
+    expect(report.windows.map(({ id }) => id)).toEqual(["weekly"]);
+    expect(report.state.untrustedWindowIds).toEqual(["usages:limit_5h"]);
+  });
+
+  it("serves no stale report from a snapshot written in the future", async () => {
+    const report = await transientWithCache(cachedQuota(undefined, NOW + 1));
+    expect(report).toMatchObject({
+      source: "unavailable",
+      windows: [],
+      state: { status: "error", stale: false, error: "provider_unavailable" },
+    });
   });
 
   it("returns the current failure when no stale window survives", async () => {
