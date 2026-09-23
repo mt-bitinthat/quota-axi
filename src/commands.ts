@@ -6,6 +6,7 @@ import { writeCachedProviders } from "./cache.js";
 import { withQuotaSemantics } from "./interpretation.js";
 import { createModelsResponse, MODEL_CATALOG_PROVIDER_IDS } from "./models.js";
 import { providerPresence } from "./lib/source-attempts.js";
+import { readTuiShowPreference } from "./lib/user-config.js";
 import { nowIso } from "./lib/time.js";
 import {
   fetchAccountQuotas,
@@ -77,6 +78,9 @@ async function quotaTuiReport(
   flags: QuotaFlags,
   options: ProviderOptions,
 ): Promise<string> {
+  // A human display preference, so it is read only on this path: TOON and
+  // JSON never see it.
+  const show = readTuiShowPreference();
   const terminal = (): { columns?: number; colorDepth: TuiColorDepth } => ({
     ...(process.stdout.columns === undefined
       ? {}
@@ -99,6 +103,7 @@ async function quotaTuiReport(
       full: flags.full,
       presence,
       showNotSetUp,
+      show,
     });
   };
 
