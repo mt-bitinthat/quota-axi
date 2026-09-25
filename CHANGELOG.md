@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.1.50](https://github.com/mthommo14/quota-axi/compare/quota-axi-v0.1.49...quota-axi-v0.1.50) (2026-09-25)
+
+
+### Features
+
+* add a user-configurable TUI quota direction ([#268](https://github.com/mthommo14/quota-axi/issues/268)) ([085acac](https://github.com/mthommo14/quota-axi/commit/085acac1b38305312239a54b1c36937d5aba18c5))
+* **aws:** render the session cost and its rate on the card ([9133bb2](https://github.com/mthommo14/quota-axi/commit/9133bb2bb074f374385d291b696a15a91917944f))
+* **aws:** report this box's session cost from uptime and its instance rate ([3732660](https://github.com/mthommo14/quota-axi/commit/373266076fc9db6ea75a227e2e3e877646c85c09))
+* **box:** add subscription renewal and API-equivalent spend lines ([8bcafca](https://github.com/mthommo14/quota-axi/commit/8bcafca0dfbbe72c84539fde31c11ca8ee0de76d))
+* **box:** end the spend line with its multiple of the subscription ([ed7d055](https://github.com/mthommo14/quota-axi/commit/ed7d0555ddf660f2d13a535b7eed23de807e224d))
+* **box:** measure API-equivalent spend over the billing cycle ([b9dc9ae](https://github.com/mthommo14/quota-axi/commit/b9dc9ae0cf8d79f9b71fff56086c9dc96c041889))
+* **box:** warnDays in box.json sets the red countdown threshold ([304327e](https://github.com/mthommo14/quota-axi/commit/304327e9e1da4965ea1dab62d154f80c5175c4fd))
+* **jev:** render today's and this cycle's ledger usage on the card ([a81ce3d](https://github.com/mthommo14/quota-axi/commit/a81ce3d94fd9deec4134b02ae59b2a6308e2c1ab))
+* **jev:** report this box's Jev usage from the local call ledger ([68d5519](https://github.com/mthommo14/quota-axi/commit/68d551922839bf6eb6a8c28ffe4fa059bfd57f87))
+* **openrouter:** read the credits endpoint beside the key endpoint ([346b012](https://github.com/mthommo14/quota-axi/commit/346b012d0a159f85dc04bd1daa030481175de7cb))
+* **openrouter:** show the credit, usage and free-request lines on the card ([1de1fd3](https://github.com/mthommo14/quota-axi/commit/1de1fd319ac5e58d737af26c9f102725d0d21e90))
+* **tui:** fold providers that are not set up ([#259](https://github.com/mthommo14/quota-axi/issues/259)) ([58014da](https://github.com/mthommo14/quota-axi/commit/58014dade31e0e570a5d5ce180bebe3ae33487f5))
+
+
+### Bug Fixes
+
+* **box:** keep the cents of a configured subscription amount ([ae51177](https://github.com/mthommo14/quota-axi/commit/ae51177d6a9a3ed9b0860f118707c137a1c24d7e))
+* **box:** TUI frames wait for the spend figure ([6c01985](https://github.com/mthommo14/quota-axi/commit/6c01985bc31d832902332bd44a9d3a4024b5720c))
+* **claude:** correct inverted quota percentages ([#248](https://github.com/mthommo14/quota-axi/issues/248)) ([309c942](https://github.com/mthommo14/quota-axi/commit/309c942ea94234f15183dc5974277f636f486439))
+* **claude:** restore correct quota percentage polarity ([#267](https://github.com/mthommo14/quota-axi/issues/267)) ([88c44f0](https://github.com/mthommo14/quota-axi/commit/88c44f068ecf0cff4d48ccbaecfca6878b1fec00))
+* **providers:** apply plan-declared cycle lengths to OpenCode Go windows ([#242](https://github.com/mthommo14/quota-axi/issues/242)) ([6084f24](https://github.com/mthommo14/quota-axi/commit/6084f2447ca4895dbe99f64e94b08f66effb5e4f))
+* **providers:** never serve stale cached windows that stopped being true ([#270](https://github.com/mthommo14/quota-axi/issues/270)) ([c01f320](https://github.com/mthommo14/quota-axi/commit/c01f32061cba6e133b22a85f598eaaf01b196afc))
+* **tui:** refresh immediately on r ([#187](https://github.com/mthommo14/quota-axi/issues/187)) ([d028df6](https://github.com/mthommo14/quota-axi/commit/d028df6bf28e1f2a0a0aa5e52e8e2fa905587aeb))
+* **zai:** report coding plan quota over a reachable route ([#249](https://github.com/mthommo14/quota-axi/issues/249)) ([08546d5](https://github.com/mthommo14/quota-axi/commit/08546d54b24465e2af7a6379c07dde9181daf0df))
+
 ## [0.1.49](https://github.com/kunchenguid/quota-axi/compare/quota-axi-v0.1.48...quota-axi-v0.1.49) (2026-09-21)
 
 
