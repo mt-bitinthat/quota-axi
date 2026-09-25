@@ -1396,12 +1396,12 @@ describe("human report folding for providers that are not set up", () => {
 
     expect(output.trimEnd().split("\n").slice(-3)).toEqual([
       "  ○ not set up  cursor · copilot · grok · kimi · zai · agy · alibaba · opencode-go · commandcode",
-      "                minimax · mimo · deepseek · openrouter · elevenlabs",
+      "                minimax · mimo · deepseek · openrouter · elevenlabs · aws · jev",
       "                quota-axi auth shows where each is read",
     ]);
     expect(output).not.toMatch(/╭─ ○ (agy|alibaba|commandcode) /);
 
-    expect(output).toMatch(/· 1 live · 1 needs attention · 14 not set up\n/);
+    expect(output).toMatch(/· 1 live · 1 needs attention · 16 not set up\n/);
     expect(output).toContain("╭─ ● codex ");
     expect(output).toContain("╭─ ○ claude ");
     expect(output).toContain("  ○ not set up  cursor · copilot · grok · kimi");
@@ -1413,7 +1413,7 @@ describe("human report folding for providers that are not set up", () => {
     stubFoldFleet();
     const output = await capture(["--tui", "--once", "--all"]);
 
-    expect(output).toContain("  ○ not set up · 14\n");
+    expect(output).toContain("  ○ not set up · 16\n");
     expect(output).toContain("╭─ ○ copilot ");
     expect(output).toContain("╭─ ○ elevenlabs ");
     expect(output).not.toContain("quota-axi auth shows where each is read");
@@ -1476,7 +1476,7 @@ describe("human report folding for providers that are not set up", () => {
 
       process.stdin.emit("data", Buffer.from("a"));
       await settle("a hide not set up");
-      expect(lastFrame()).toContain("  ○ not set up · 14");
+      expect(lastFrame()).toContain("  ○ not set up · 16");
       expect(lastFrame()).toContain("╭─ ○ zai ");
 
       process.stdin.emit("data", Buffer.from("q"));
